@@ -1,0 +1,185 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+   url     = env("DATABASE_URL")
+}
+
+enum UserRole {
+  GUEST
+  BIDDER
+  SELLER
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password       String
+  fullName       String
+  address        String
+  dateOfBirth    DateTime?
+  role           UserRole  @default(BIDDER)
+  positiveRating Int       @default(0)
+  negativeRating Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // For refresh token management
+  refreshTokens  RefreshToken[]
+  
+  // Seller upgrade requests
+  upgradeRequests SellerUpgradeRequest[]
+  
+  // Products
+  favoriteProducts FavoriteProduct[]
+  bids             Bid[]
+  products         Product[]         // Products created by seller
+  
+  // Ratings
+  ratingsGiven     Rating[]          @relation("RatingGiver")
+  ratingsReceived  Rating[]          @relation("RatingReceiver")
+  
+  // Questions and answers
+  questions        Question[]        @relation("QuestionAsker")
+  answers          Question[]        @relation("QuestionAnswerer")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SellerUpgradeRequest {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  products  Product[]
+  parentId  String?    
+  parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryToCategory")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+
+model Product {
+  id                 String   @id @default(uuid())
+  name               String
+  description        String
+  descriptionHistory String[]
+  currentPrice       Float     @default(0)
+  initialPrice       Float
+  priceStep          Float
+  buyNowPrice        Float?
+  autoExtend         Boolean  @default(false)
+  images             String[]
+  status             String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELED
+  endTime            DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  // Relations
+  sellerId           String
+  seller             User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  categoryId         String
+  category           Category @relation(fields: [categoryId], references: [id])
+  bids               Bid[]
+  favoriteBy         FavoriteProduct[]
+  questions          Question[]
+
+  // Winner
+  winnerId           String?
+  
+  @@index([sellerId])
+  @@index([categoryId])
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Float
+  createdAt DateTime @default(now())
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Status
+  rejected  Boolean  @default(false)
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model FavoriteProduct {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model Rating {
+  id           String   @id @default(uuid())
+  value        Int      // +1 or -1
+  comment      String?
+  createdAt    DateTime @default(now())
+  
+  // Relations
+  giverId      String
+  giver        User     @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiverId   String
+  receiver     User     @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  @@index([giverId])
+  @@index([receiverId])
+}
+
+model Question {
+  id        String   @id @default(uuid())
+  content   String
+  answer    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  askerId   String
+  asker     User     @relation("QuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Answer relation
+  answererId String?
+  answerer   User?    @relation("QuestionAnswerer", fields: [answererId], references: [id])
+  
+  @@index([askerId])
+  @@index([productId])
+}
