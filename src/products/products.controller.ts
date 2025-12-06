@@ -11,6 +11,7 @@ import { Product, UserRole } from '@prisma/client';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+import { HomepageResponseDto } from './dto/product-list-items';
 
 @ApiTags('Products')
 @Controller('products')
@@ -34,6 +35,16 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: 'List of all products.' })
   findAll(): Promise<Product[]> {
     return this.productsService.findAll();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Get('homepage')
+  @ApiOperation({ summary: 'Get products for homepage sections' })
+  @ApiResponse({ status: 200, description: 'Homepage products retrieved successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async getHomePageProducts():Promise<HomepageResponseDto>{
+    return this.productsService.getHomepageProducts();
   }
 
   @Get(':id')
