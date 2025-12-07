@@ -5,13 +5,14 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Product, UserRole } from '@prisma/client';
 
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 import { HomepageResponseDto } from './dto/product-list-items';
+import { SearchResponseDto } from './dto/search-response.dto';
 
 @ApiTags('Products')
 @Controller('products')
@@ -45,6 +46,20 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   async getHomePageProducts():Promise<HomepageResponseDto>{
     return this.productsService.getHomepageProducts();
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Search products' })
+  @ApiResponse({ status: 200, description: 'Products search results.' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 12 })
+  @ApiQuery({ name: 'searchType', required: false, enum: ['name', 'category', 'both'], example: 'name' })
+  @ApiQuery({ name: 'query', required: false, type: String, example: 'laptop' })
+  @ApiQuery({ name: 'categoryId', required: false, type: String })
+  @ApiQuery({ name: 'sortBy', required: false, enum: ['endTime_asc', 'endTime_desc', 'price_asc', 'price_desc', 'newest', 'most_bids'], example: 'price_asc' })
+  async searchProducts(@Req() req):Promise<SearchResponseDto>{
+    const queryParams=req.query;
+    return this.productsService.searchProducts(queryParams);
   }
 
   @Get(':id')
@@ -82,4 +97,6 @@ export class ProductsController {
     const sellerId = req.user.sub;
     return this.productsService.remove(id, sellerId);
   }
+
+  
 }

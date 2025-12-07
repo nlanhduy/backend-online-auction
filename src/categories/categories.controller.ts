@@ -33,6 +33,29 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
+  @Get('/with-children')
+  @ApiOperation({ summary: 'Get all parent categories with their children' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'List of parent categories with children.',
+    schema: {
+      example: [
+        {
+          id: 'uuid-1',
+          name: 'Electronics',
+          parentId: null,
+          children: [
+            { id: 'uuid-2', name: 'Laptops', parentId: 'uuid-1' },
+            { id: 'uuid-3', name: 'Phones', parentId: 'uuid-1' }
+          ]
+        }
+      ]
+    }
+  })
+  findAllWithChildren() {
+    return this.categoriesService.findAllWithChildren();
+  }
+
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

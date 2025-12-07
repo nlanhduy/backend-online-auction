@@ -1,9 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { retry, take } from 'rxjs';
+import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
+import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
 
 @Injectable()
 export class ProductsService {
@@ -173,6 +175,160 @@ export class ProductsService {
       mostBids: mostBids.map(transformProduct),
       highestPriced: highestPriced.map(transformProduct),
     }
+
+  }
+
+  // search products with filter, pagination and sorting
+  async searchProducts(searchProductDto:SearchProductDto):Promise<SearchResponseDto>{
+    const {page=1, limit=10, searchType=SearchType.NAME, query, categoryId, sortBy=SortBy.END_TIME_ASC}=searchProductDto;
+    // Validate search param
+    if(searchType===SearchType.NAME&&(!query||query.trim()==='')){
+      throw new BadRequestException("Query parameter is required for search type 'name'");  
+    }
+    else if(searchType===SearchType.CATEGORY&&(!categoryId||categoryId.trim()==='')){
+      throw new BadRequestException("CategoryId parameter is required for search type 'category'");  
+    }
+    if(searchType===SearchType.BOTH&&(!query||query.trim()==='')&&(!categoryId||categoryId.trim()=='')){
+      throw new BadRequestException("At least one of Query or CategoryId parameter is required for search type 'both'");  
+    }
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    const now=new Date();
+
+    // Build where clause=> only take active products
+    const where:any={
+      status:'ACTIVE',
+      endTime: { gt: now },
+    }
+    // Apply search filters
+    switch(searchType){
+      case SearchType.NAME:
+        where.name={ contains: query, mode: 'insensitive' };
+        break;
+      case SearchType.CATEGORY:
+        where.categoryId = categoryId;
+        break;
+      
+      case SearchType.BOTH:
+        where.name = { contains: query, mode: 'insensitive' };
+        where.categoryId = categoryId;
+        break;
+
+    }
+
+    // Build orderBy clause
+    let orderBy:any={};
+    switch (sortBy) {
+      case SortBy.END_TIME_ASC:
+        orderBy = { endTime: 'asc' };
+        break;
+      case SortBy.END_TIME_DESC:
+        orderBy = { endTime: 'desc' };
+        break;
+      case SortBy.PRICE_ASC:
+        orderBy = { currentPrice: 'asc' };
+        break;
+      case SortBy.PRICE_DESC:
+        orderBy = { currentPrice: 'desc' };
+        break;
+      case SortBy.NEWEST:
+        orderBy = { createdAt: 'desc' };
+        break;
+      case SortBy.MOST_BIDS:
+        orderBy = { bids: { _count: 'desc' } };
+        break;
+      default:
+        orderBy = { endTime: 'asc' };
+    }
+
+    // Base select for products
+    const baseSelect={
+      id: true,
+      name: true,
+      images: true,
+      currentPrice: true,
+      buyNowPrice: true,
+      createdAt: true,
+      endTime: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      seller:{
+        select:{
+          id:true,
+          fullName:true,
+        }
+      },
+      bids:{
+        where: { rejected: false },
+        orderBy: { amount: 'desc' as const },
+        take: 1,
+        select:{
+          amount:true,
+          user:{
+            select:{
+              id:true,
+              fullName:true,
+            }
+          }
+        }
+      },
+      _count:{
+        select:{
+          bids:{
+            where:{ rejected: false},
+          }
+        }
+      }
+
+    };
+
+    // Execute queries
+    const[products, total]=await Promise.all([
+      this.prisma.product.findMany({
+        where, 
+        select: baseSelect,
+        orderBy,
+        skip:skip,
+        take: limitNum,
+      }),
+      this.prisma.product.count({ where }),
+    ])
+
+    // Transform products
+    const transformedProducts: ProductItemDto[] = products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      mainImage: product.images[0] || null,
+      currentPrice: product.currentPrice,
+      buyNowPrice: product.buyNowPrice,
+      createdAt: product.createdAt,
+      endTime: product.endTime,
+      timeRemaining: product.endTime.getTime() - now.getTime(),
+      totalBids: product._count.bids,
+      highestBidder: product.bids[0]?.user || null,
+      category: product.category,
+      seller: product.seller,
+    }));
+
+    const totalPages=Math.ceil(total/limit);
+    return {
+      products:transformedProducts,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page<totalPages,
+      hasPrevious: page>1,
+      searchType,
+      query,
+      categoryId,
+      sortBy,
+    };
 
   }
 }

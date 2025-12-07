@@ -22,6 +22,11 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,  // ✅ Tự động convert types
+      },
+      forbidNonWhitelisted: true,
+
     }),
   );
   const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
