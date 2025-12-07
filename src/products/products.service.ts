@@ -182,15 +182,15 @@ export class ProductsService {
   async searchProducts(searchProductDto:SearchProductDto):Promise<SearchResponseDto>{
     const {page=1, limit=10, searchType=SearchType.NAME, query, categoryId, sortBy=SortBy.END_TIME_ASC}=searchProductDto;
     // Validate search param
-    if(searchType===SearchType.NAME&&(!query||query.trim()==='')){
-      throw new BadRequestException("Query parameter is required for search type 'name'");  
-    }
-    else if(searchType===SearchType.CATEGORY&&(!categoryId||categoryId.trim()==='')){
-      throw new BadRequestException("CategoryId parameter is required for search type 'category'");  
-    }
-    if(searchType===SearchType.BOTH&&(!query||query.trim()==='')&&(!categoryId||categoryId.trim()=='')){
-      throw new BadRequestException("At least one of Query or CategoryId parameter is required for search type 'both'");  
-    }
+    // if(searchType===SearchType.NAME&&(!query||query.trim()==='')){
+    //   throw new BadRequestException("Query parameter is required for search type 'name'");  
+    // }
+    // else if(searchType===SearchType.CATEGORY&&(!categoryId||categoryId.trim()==='')){
+    //   throw new BadRequestException("CategoryId parameter is required for search type 'category'");  
+    // }
+    // if(searchType===SearchType.BOTH&&(!query||query.trim()==='')&&(!categoryId||categoryId.trim()=='')){
+    //   throw new BadRequestException("At least one of Query or CategoryId parameter is required for search type 'both'");  
+    // }
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
@@ -201,20 +201,24 @@ export class ProductsService {
       status:'ACTIVE',
       endTime: { gt: now },
     }
-    // Apply search filters
-    switch(searchType){
-      case SearchType.NAME:
-        where.name={ contains: query, mode: 'insensitive' };
-        break;
-      case SearchType.CATEGORY:
-        where.categoryId = categoryId;
-        break;
-      
-      case SearchType.BOTH:
-        where.name = { contains: query, mode: 'insensitive' };
-        where.categoryId = categoryId;
-        break;
 
+    // Handle search based on searchType
+    if (searchType === SearchType.NAME && query&&query.trim()!=='') {
+      // Search by name only if query is provided
+      where.OR = [
+        { name: { contains: query, mode: 'insensitive' } }      ];
+    } else if (searchType === SearchType.CATEGORY && categoryId&&categoryId.trim()!=='') {
+      // Search by category only
+      where.categoryId = categoryId;
+    } else if (searchType === SearchType.BOTH) {
+      // Search by both name and category
+      if (query) {
+        where.OR = [
+          { name: { contains: query, mode: 'insensitive' } }        ];
+      }
+      if (categoryId&&categoryId.trim()!=='') {
+        where.categoryId = categoryId;
+      }
     }
 
     // Build orderBy clause
@@ -315,18 +319,18 @@ export class ProductsService {
       seller: product.seller,
     }));
 
-    const totalPages=Math.ceil(total/limit);
+    const totalPages=Math.ceil(total/limitNum);
     return {
       products:transformedProducts,
       total,
-      page,
-      limit,
+      page:pageNum,
+      limit:limitNum,
       totalPages,
-      hasNext: page<totalPages,
-      hasPrevious: page>1,
+      hasNext: pageNum<totalPages,
+      hasPrevious: pageNum>1,
       searchType,
-      query,
-      categoryId,
+      query:query||undefined, //return undefined if not provided
+      categoryId:categoryId||undefined, // return undefined if not provided
       sortBy,
     };
 

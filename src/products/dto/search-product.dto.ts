@@ -14,6 +14,11 @@ export enum SortBy{
     NEWEST='newest',
     MOST_BIDS='mostBids',
 }
+export enum Status{
+    ACTIVE='active',
+    COMPLETED='completed',
+    CANCELLED='cancelled',
+}
 export class SearchProductDto{
     @ApiPropertyOptional({description:'Page number', default:1, minimum:1})
     @Type(() => Number)
@@ -48,5 +53,15 @@ export class SearchProductDto{
     @IsEnum(SortBy)
     @IsOptional()
     sortBy?:SortBy=SortBy.END_TIME_ASC;
+
+    @ApiPropertyOptional({ 
+        description: 'Product status filter', 
+        enum: Status,
+        default: 'ACTIVE'
+    })
+    @IsOptional()
+    @IsEnum(Status)
+    status?: Status = Status.ACTIVE;
+
     
 }

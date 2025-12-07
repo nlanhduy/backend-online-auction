@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-   url     = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -22,6 +22,7 @@ model User {
   email          String    @unique
   password       String
   fullName       String
+  phoneNumber    String
   address        String
   dateOfBirth    DateTime?
   role           UserRole  @default(BIDDER)
@@ -31,23 +32,23 @@ model User {
   updatedAt      DateTime  @updatedAt
 
   // For refresh token management
-  refreshTokens  RefreshToken[]
-  
+  refreshTokens RefreshToken[]
+
   // Seller upgrade requests
   upgradeRequests SellerUpgradeRequest[]
-  
+
   // Products
   favoriteProducts FavoriteProduct[]
   bids             Bid[]
-  products         Product[]         // Products created by seller
-  
+  products         Product[] // Products created by seller
+
   // Ratings
-  ratingsGiven     Rating[]          @relation("RatingGiver")
-  ratingsReceived  Rating[]          @relation("RatingReceiver")
-  
+  ratingsGiven    Rating[] @relation("RatingGiver")
+  ratingsReceived Rating[] @relation("RatingReceiver")
+
   // Questions and answers
-  questions        Question[]        @relation("QuestionAsker")
-  answers          Question[]        @relation("QuestionAnswerer")
+  questions Question[] @relation("QuestionAsker")
+  answers   Question[] @relation("QuestionAnswerer")
 }
 
 model RefreshToken {
@@ -73,23 +74,23 @@ model SellerUpgradeRequest {
 }
 
 model Category {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  products  Product[]
-  parentId  String?    
-  parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
-  children  Category[] @relation("CategoryToCategory")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String     @id @default(uuid())
+  name        String     @unique
+  products    Product[]
+  parentId    String?
+  description String?
+  parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToCategory")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
-
 
 model Product {
   id                 String   @id @default(uuid())
   name               String
   description        String
   descriptionHistory String[]
-  currentPrice       Float     @default(0)
+  currentPrice       Float    @default(0)
   initialPrice       Float
   priceStep          Float
   buyNowPrice        Float?
@@ -99,19 +100,19 @@ model Product {
   endTime            DateTime
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-  
+
   // Relations
-  sellerId           String
-  seller             User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  categoryId         String
-  category           Category @relation(fields: [categoryId], references: [id])
-  bids               Bid[]
-  favoriteBy         FavoriteProduct[]
-  questions          Question[]
+  sellerId   String
+  seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category          @relation(fields: [categoryId], references: [id])
+  bids       Bid[]
+  favoriteBy FavoriteProduct[]
+  questions  Question[]
 
   // Winner
-  winnerId           String?
-  
+  winnerId String?
+
   @@index([sellerId])
   @@index([categoryId])
 }
@@ -120,15 +121,15 @@ model Bid {
   id        String   @id @default(uuid())
   amount    Float
   createdAt DateTime @default(now())
-  
+
   // Relations
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
   // Status
-  rejected  Boolean  @default(false)
+  rejected Boolean @default(false)
 
   @@index([userId])
   @@index([productId])
@@ -148,17 +149,17 @@ model FavoriteProduct {
 }
 
 model Rating {
-  id           String   @id @default(uuid())
-  value        Int      // +1 or -1
-  comment      String?
-  createdAt    DateTime @default(now())
-  
+  id        String   @id @default(uuid())
+  value     Int // +1 or -1
+  comment   String?
+  createdAt DateTime @default(now())
+
   // Relations
-  giverId      String
-  giver        User     @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
-  receiverId   String
-  receiver     User     @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  
+  giverId    String
+  giver      User   @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User   @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
   @@index([giverId])
   @@index([receiverId])
 }
@@ -169,17 +170,17 @@ model Question {
   answer    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relations
   askerId   String
-  asker     User     @relation("QuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
+  asker     User    @relation("QuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
   // Answer relation
   answererId String?
-  answerer   User?    @relation("QuestionAnswerer", fields: [answererId], references: [id])
-  
+  answerer   User?   @relation("QuestionAnswerer", fields: [answererId], references: [id])
+
   @@index([askerId])
   @@index([productId])
 }
