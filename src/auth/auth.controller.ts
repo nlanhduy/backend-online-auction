@@ -21,12 +21,14 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
+import { Public } from 'src/common/decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully.' })
@@ -49,6 +51,7 @@ export class AuthController {
     return rest;
   }
 
+  @Public()
   @Post('login')
   @ApiOperation({ summary: 'Login user and get access token' })
   @ApiResponse({ status: 200, description: 'User logged in successfully.' })
@@ -68,6 +71,7 @@ export class AuthController {
     return rest;
   }
 
+  @Public()
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh access token using refresh token' })

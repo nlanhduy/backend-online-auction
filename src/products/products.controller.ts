@@ -1,102 +1,133 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Roles } from 'src/common/decorators/roles.decorator';
-
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { 
+  Body, 
+  Controller, 
+  Delete, 
+  Get, 
+  HttpCode,
+  HttpStatus,
+  Param, 
+  Patch, 
+  Post, 
+  Query 
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Product, UserRole } from '@prisma/client';
 
+import { Roles } from '../common/decorators/roles.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { SearchProductDto } from './dto/search-product.dto';
 import { ProductsService } from './products.service';
 import { HomepageResponseDto } from './dto/product-list-items';
 import { SearchResponseDto } from './dto/search-response.dto';
+import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 
-@ApiTags('Products')
+@ApiTags('products')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
-  @Post()
-  @Roles(UserRole.SELLER)
-  @ApiOperation({ summary: 'Create a new product' })
-  @ApiResponse({ status: 201, description: 'Product successfully created.' })
-  @ApiBody({ type: CreateProductDto })
-  create(@Body() createProductDto: CreateProductDto, @Req() req): Promise<Product> {
-    const sellerId = req.user.sub;
-    return this.productsService.create(createProductDto, sellerId);
+  // ==================== Public Routes ====================
+  
+  @Public()
+  @Get('search')
+  @ApiOperation({ 
+    summary: 'Search products with filters (Public)',
+    description: 'Search products by name, category, price range. Query is optional - can use filters only.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Products found successfully',
+    type: SearchResponseDto 
+  })
+  async searchProducts(@Query() searchDto: SearchProductDto): Promise<SearchResponseDto> {
+    return this.productsService.searchProducts(searchDto);
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get all products' })
-  @ApiResponse({ status: 200, description: 'List of all products.' })
-  findAll(): Promise<Product[]> {
-    return this.productsService.findAll();
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
+  @Public()
   @Get('homepage')
-  @ApiOperation({ summary: 'Get products for homepage sections' })
-  @ApiResponse({ status: 200, description: 'Homepage products retrieved successfully.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  async getHomePageProducts():Promise<HomepageResponseDto>{
+  @ApiOperation({ 
+    summary: 'Get homepage products (Public)',
+    description: 'Returns ending soon, most bids, and highest priced products'
+  })
+  @ApiResponse({ status: 200, description: 'Homepage products retrieved successfully' })
+  async getHomePageProducts(): Promise<HomepageResponseDto> {
     return this.productsService.getHomepageProducts();
   }
 
-  @Get('search')
-  @ApiOperation({ summary: 'Search products' })
-  @ApiResponse({ status: 200, description: 'Products search results.' })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 12 })
-  @ApiQuery({ name: 'searchType', required: false, enum: ['name', 'category', 'both'], example: 'name' })
-  @ApiQuery({ name: 'query', required: false, type: String, example: 'laptop' })
-  @ApiQuery({ name: 'categoryId', required: false, type: String })
-  @ApiQuery({ name: 'sortBy', required: false, enum: ['endTime_asc', 'endTime_desc', 'price_asc', 'price_desc', 'newest', 'most_bids'], example: 'price_asc' })
-  async searchProducts(@Req() req):Promise<SearchResponseDto>{
-    const queryParams=req.query;
-    return this.productsService.searchProducts(queryParams);
-  }
-
+  @Public()
   @Get(':id')
-  @ApiOperation({ summary: 'Get a single product by ID' })
-  @ApiResponse({ status: 200, description: 'Product retrieved successfully.' })
-  @ApiResponse({ status: 404, description: 'Product not found.' })
+  @ApiOperation({ summary: 'Get product details by ID (Public)' })
+  @ApiResponse({ status: 200, description: 'Product found' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
   findOne(@Param('id') id: string): Promise<Product> {
     return this.productsService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
+  // ==================== Protected Routes (SELLER/ADMIN) ====================
+  
+  @Post()
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create new product (SELLER/ADMIN only)' })
+  @ApiResponse({ status: 201, description: 'Product created successfully' })
+  @ApiResponse({ status: 403, description: 'Only SELLER or ADMIN can create products' })
+  @ApiResponse({ status: 400, description: 'Invalid product data' })
+  @ApiBody({ type: CreateProductDto })
+  create(
+    @Body() createProductDto: CreateProductDto,
+    @CurrentUser() user: any,
+  ): Promise<Product> {
+    return this.productsService.create(createProductDto, user.sub);
+  }
+
   @Patch(':id')
-  @Roles(UserRole.SELLER)
-  @ApiOperation({ summary: 'Update a product by ID' })
-  @ApiResponse({ status: 200, description: 'Product updated successfully.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ 
+    summary: 'Update product (SELLER/ADMIN)',
+    description: 'SELLER can only update their own products. ADMIN can update any product.'
+  })
+  @ApiResponse({ status: 200, description: 'Product updated successfully' })
+  @ApiResponse({ status: 403, description: 'Not allowed to update this product' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiBody({ type: UpdateProductDto })
   update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
-    @Req() req,
+    @CurrentUser() user: any,
   ): Promise<Product> {
-    const sellerId = req.user.sub;
-    return this.productsService.update(id, updateProductDto, sellerId);
+    return this.productsService.update(id, updateProductDto, user.sub, user.role);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a product by ID' })
-  @ApiResponse({ status: 200, description: 'Product deleted successfully.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  remove(@Param('id') id: string, @Req() req): Promise<Product> {
-    const sellerId = req.user.sub;
-    return this.productsService.remove(id, sellerId);
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ 
+    summary: 'Delete product (SELLER/ADMIN)',
+    description: 'SELLER can only delete their own products. ADMIN can delete any product.'
+  })
+  @ApiResponse({ status: 204, description: 'Product deleted successfully' })
+  @ApiResponse({ status: 403, description: 'Not allowed to delete this product' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  remove(@Param('id') id: string, @CurrentUser() user: any): Promise<Product> {
+    return this.productsService.remove(id, user.sub, user.role);
   }
 
+  // ==================== Admin Only Routes ====================
   
+  @Get()
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all products including inactive (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'All products retrieved successfully' })
+  findAll(): Promise<Product[]> {
+    return this.productsService.findAll();
+  }
 }

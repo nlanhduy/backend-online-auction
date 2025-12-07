@@ -46,12 +46,19 @@ export class ProductsService {
     return product;
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto, sellerId: string) {
+  async update(
+    id: string, 
+    updateProductDto: UpdateProductDto, 
+    userId: string,
+    userRole: string
+  ) {
     const existingProduct = await this.prisma.product.findUnique({ where: { id } });
     if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
-    if (existingProduct.sellerId !== sellerId) {
+
+    // ADMIN can update any product, SELLER can only update their own
+    if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
       throw new ForbiddenException(`You are not allowed to update this product`);
     }
 
@@ -66,12 +73,14 @@ export class ProductsService {
     });
   }
 
-  async remove(id: string, sellerId: string) {
+  async remove(id: string, userId: string, userRole: string) {
     const existingProduct = await this.prisma.product.findUnique({ where: { id } });
     if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
-    if (existingProduct.sellerId !== sellerId) {
+
+    // ADMIN can delete any product, SELLER can only delete their own
+    if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
       throw new ForbiddenException(`You are not allowed to delete this product`);
     }
 
@@ -180,21 +189,15 @@ export class ProductsService {
 
   // search products with filter, pagination and sorting
   async searchProducts(searchProductDto:SearchProductDto):Promise<SearchResponseDto>{
-    const {page=1, limit=10, searchType=SearchType.NAME, query, categoryId, sortBy=SortBy.END_TIME_ASC}=searchProductDto;
-    // Validate search param
-    // if(searchType===SearchType.NAME&&(!query||query.trim()==='')){
-    //   throw new BadRequestException("Query parameter is required for search type 'name'");  
-    // }
-    // else if(searchType===SearchType.CATEGORY&&(!categoryId||categoryId.trim()==='')){
-    //   throw new BadRequestException("CategoryId parameter is required for search type 'category'");  
-    // }
-    // if(searchType===SearchType.BOTH&&(!query||query.trim()==='')&&(!categoryId||categoryId.trim()=='')){
-    //   throw new BadRequestException("At least one of Query or CategoryId parameter is required for search type 'both'");  
-    // }
+    const {page=1, limit=10, searchType=SearchType.NAME, query, categoryId, sortBy}=searchProductDto;
+    
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
     const now=new Date();
+    
+    // Get sortBy value with default
+    const sortByValue = sortBy || SortBy.END_TIME_ASC;
 
     // Build where clause=> only take active products
     const where:any={
@@ -223,24 +226,33 @@ export class ProductsService {
 
     // Build orderBy clause
     let orderBy:any={};
-    switch (sortBy) {
+    
+    switch (sortByValue) {
+      case 'endTimeAsc':
       case SortBy.END_TIME_ASC:
         orderBy = { endTime: 'asc' };
         break;
+      case 'endTimeDesc':
       case SortBy.END_TIME_DESC:
         orderBy = { endTime: 'desc' };
         break;
+      case 'priceAsc':
       case SortBy.PRICE_ASC:
         orderBy = { currentPrice: 'asc' };
         break;
+      case 'priceDesc':
       case SortBy.PRICE_DESC:
         orderBy = { currentPrice: 'desc' };
         break;
+      case 'newest':
       case SortBy.NEWEST:
         orderBy = { createdAt: 'desc' };
         break;
+      case 'mostBids':
       case SortBy.MOST_BIDS:
-        orderBy = { bids: { _count: 'desc' } };
+        // For mostBids, we'll need to handle it differently
+        // We'll sort by bid count in memory after fetching
+        orderBy = { endTime: 'asc' }; // Default order, will sort by bids later
         break;
       default:
         orderBy = { endTime: 'asc' };
@@ -292,19 +304,33 @@ export class ProductsService {
     };
 
     // Execute queries
+    // For mostBids, we need to fetch more records and sort manually
+    const sortByString = String(sortByValue);
+    const isMostBidsSort = (sortByString === 'mostBids');
+    const fetchLimit = isMostBidsSort ? limitNum * 3 : limitNum; // Fetch more for sorting
+    const fetchSkip = isMostBidsSort ? 0 : skip; // Don't skip if we need to sort
+    
     const[products, total]=await Promise.all([
       this.prisma.product.findMany({
         where, 
         select: baseSelect,
         orderBy,
-        skip:skip,
-        take: limitNum,
+        skip: fetchSkip,
+        take: fetchLimit,
       }),
       this.prisma.product.count({ where }),
     ])
 
+    // Sort by mostBids if needed
+    let sortedProducts = products;
+    if (isMostBidsSort) {
+      sortedProducts = [...products].sort((a, b) => b._count.bids - a._count.bids);
+      // Apply pagination after sorting
+      sortedProducts = sortedProducts.slice(skip, skip + limitNum);
+    }
+
     // Transform products
-    const transformedProducts: ProductItemDto[] = products.map((product) => ({
+    const transformedProducts: ProductItemDto[] = sortedProducts.map((product) => ({
       id: product.id,
       name: product.name,
       mainImage: product.images[0] || null,
@@ -312,7 +338,7 @@ export class ProductsService {
       buyNowPrice: product.buyNowPrice,
       createdAt: product.createdAt,
       endTime: product.endTime,
-      timeRemaining: product.endTime.getTime() - now.getTime(),
+      timeRemaining: Math.max(0, product.endTime.getTime() - now.getTime()),
       totalBids: product._count.bids,
       highestBidder: product.bids[0]?.user || null,
       category: product.category,
@@ -331,7 +357,7 @@ export class ProductsService {
       searchType,
       query:query||undefined, //return undefined if not provided
       categoryId:categoryId||undefined, // return undefined if not provided
-      sortBy,
+      sortBy: String(sortByValue),
     };
 
   }
