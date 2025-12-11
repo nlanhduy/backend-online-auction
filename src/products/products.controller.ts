@@ -1,30 +1,31 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
+import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
+
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { 
-  Body, 
-  Controller, 
-  Delete, 
-  Get, 
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
-  Param, 
-  Patch, 
-  Post, 
-  Query 
+  Param,
+  Patch,
+  Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Product, UserRole } from '@prisma/client';
 
-import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { SearchProductDto } from './dto/search-product.dto';
-import { ProductsService } from './products.service';
 import { HomepageResponseDto } from './dto/product-list-items';
+import { SearchProductDto } from './dto/search-product.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
-import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductsService } from './products.service';
 
 @ApiTags('products')
 @Controller('products')
@@ -32,17 +33,18 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   // ==================== Public Routes ====================
-  
+
   @Public()
   @Get('search')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Search products with filters (Public)',
-    description: 'Search products by name, category, price range. Query is optional - can use filters only.'
+    description:
+      'Search products by name, category, price range. Query is optional - can use filters only.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Products found successfully',
-    type: SearchResponseDto 
+    type: SearchResponseDto,
   })
   async searchProducts(@Query() searchDto: SearchProductDto): Promise<SearchResponseDto> {
     return this.productsService.searchProducts(searchDto);
@@ -50,9 +52,9 @@ export class ProductsController {
 
   @Public()
   @Get('homepage')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get homepage products (Public)',
-    description: 'Returns ending soon, most bids, and highest priced products'
+    description: 'Returns ending soon, most bids, and highest priced products',
   })
   @ApiResponse({ status: 200, description: 'Homepage products retrieved successfully' })
   async getHomePageProducts(): Promise<HomepageResponseDto> {
@@ -69,7 +71,7 @@ export class ProductsController {
   }
 
   // ==================== Protected Routes (SELLER/ADMIN) ====================
-  
+
   @Post()
   @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
@@ -79,19 +81,16 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'Only SELLER or ADMIN can create products' })
   @ApiResponse({ status: 400, description: 'Invalid product data' })
   @ApiBody({ type: CreateProductDto })
-  create(
-    @Body() createProductDto: CreateProductDto,
-    @CurrentUser() user: any,
-  ): Promise<Product> {
+  create(@Body() createProductDto: CreateProductDto, @CurrentUser() user: any): Promise<Product> {
     return this.productsService.create(createProductDto, user.sub);
   }
 
   @Patch(':id')
   @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Update product (SELLER/ADMIN)',
-    description: 'SELLER can only update their own products. ADMIN can update any product.'
+    description: 'SELLER can only update their own products. ADMIN can update any product.',
   })
   @ApiResponse({ status: 200, description: 'Product updated successfully' })
   @ApiResponse({ status: 403, description: 'Not allowed to update this product' })
@@ -109,9 +108,9 @@ export class ProductsController {
   @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Delete product (SELLER/ADMIN)',
-    description: 'SELLER can only delete their own products. ADMIN can delete any product.'
+    description: 'SELLER can only delete their own products. ADMIN can delete any product.',
   })
   @ApiResponse({ status: 204, description: 'Product deleted successfully' })
   @ApiResponse({ status: 403, description: 'Not allowed to delete this product' })
@@ -121,7 +120,7 @@ export class ProductsController {
   }
 
   // ==================== Admin Only Routes ====================
-  
+
   @Get()
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
