@@ -22,8 +22,8 @@ model User {
   email          String    @unique
   password       String
   fullName       String
-  phoneNumber    String
   address        String
+  avatar         String? 
   dateOfBirth    DateTime?
   role           UserRole  @default(BIDDER)
   positiveRating Int       @default(0)
@@ -47,8 +47,7 @@ model User {
   ratingsReceived Rating[] @relation("RatingReceiver")
 
   // Questions and answers
-  questions Question[] @relation("QuestionAsker")
-  answers   Question[] @relation("QuestionAnswerer")
+  questions Question[] 
 }
 
 model RefreshToken {
@@ -167,20 +166,26 @@ model Rating {
 model Question {
   id        String   @id @default(uuid())
   content   String
-  answer    String?
+  isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  askerId   String
-  asker     User    @relation("QuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
+  // 1. Author Relation (Unified Asker/Answerer)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 2. Product Relation
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  // Answer relation
-  answererId String?
-  answerer   User?   @relation("QuestionAnswerer", fields: [answererId], references: [id])
+  // 3. Self-Relation for Threaded Comments (Facebook style)
+  // If parentId is null, it is a root question.
+  // If parentId exists, it is a reply to that question.
+  parentId  String?   
+  parent    Question?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Question[] @relation("Thread") 
 
-  @@index([askerId])
+  @@index([userId])
   @@index([productId])
+  @@index([parentId])
 }

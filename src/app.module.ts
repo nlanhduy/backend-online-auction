@@ -13,6 +13,7 @@ import { HttpLoggerInterceptor } from './logger/http-logger.interceptor';
 import { LoggerModule } from './logger/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
+import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './user/user.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { UsersModule } from './user/user.module';
     ProductsModule,
     UsersModule,
     FavoritesModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [
