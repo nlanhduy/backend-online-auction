@@ -1,30 +1,37 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 /* eslint-disable prettier/prettier */
 import * as bcrypt from 'bcrypt';
+import { MailService } from 'src/mail/mail.service';
+import { OtpService } from 'src/otp/otp.service';
 
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
+import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
+import { ChangeNameDto } from './dto/change-name.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
-import { UpdatePasswordDto } from './dto/update-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
-
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly otpService: OtpService,
+    private readonly mailService: MailService,
+  ) {}
   async create(createUserDto: CreateUserDto) {
     const { email, password, fullName, dateOfBirth, address, role } = createUserDto;
 
@@ -141,36 +148,129 @@ export class UsersService {
     return updatedUser;
   }
 
-  async updatePassword(id: string, updatePasswordDto: UpdatePasswordDto) {
-    const { currentPassword, newPassword } = updatePasswordDto;
+  async changeName(userId: string, dto: ChangeNameDto) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        fullName: dto.fullName,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        updatedAt: true,
+      },
+    });
+  }
 
-    // Get user with password
+  async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
+      where: { id: userId },
+      select: {
+        password: true,
+      },
     });
 
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new BadRequestException('User not found');
     }
 
-    // Verify current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Current password is incorrect');
+    const isOldPasswordValid = await bcrypt.compare(dto.oldPassword, user.password);
+
+    if (!isOldPasswordValid) {
+      throw new ForbiddenException('Old password is incorrect');
     }
 
-    // Hash new password
-    const hashedPassword = await this.hashPassword(newPassword);
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
-    // Update password
     await this.prisma.user.update({
-      where: { id },
+      where: { id: userId },
       data: {
         password: hashedPassword,
       },
     });
+  }
 
-    return { message: 'Password updated successfully' };
+  async requestEmailChange(
+    userId: string,
+    dto: ChangeEmailRequestDto,
+  ): Promise<{ message: string }> {
+    const { newEmail } = dto;
+
+    // Check if email already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: newEmail },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
+    }
+
+    // Generate OTP
+    const otp = this.otpService.generateOtp();
+
+    // Store OTP in cache
+    await this.otpService.storeOtp(newEmail, otp, userId);
+
+    // Send OTP via email
+    await this.mailService.sendChangeEmailOtp(newEmail, otp);
+
+    return {
+      message: 'Verification code sent to your new email address',
+    };
+  }
+
+  /**
+   * Verify OTP and change email
+   */
+  async verifyAndChangeEmail(
+    userId: string,
+    dto: ChangeEmailVerifyDto,
+  ): Promise<{ message: string }> {
+    const { newEmail, otp } = dto;
+
+    // Verify OTP
+    const verifiedUserId = await this.otpService.verifyOtp(newEmail, otp);
+    console.log({ verifiedUserId });
+
+    if (!verifiedUserId) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    // Verify that the OTP belongs to the current user
+    if (verifiedUserId !== userId) {
+      throw new BadRequestException('OTP does not match current user');
+    }
+
+    // Double-check email availability before update
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: newEmail },
+    });
+
+    if (existingUser) {
+      // Clear OTP as it's no longer valid
+      this.otpService.clearOtp(newEmail);
+      throw new BadRequestException('Email already in use');
+    }
+
+    // Update user email
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { email: newEmail },
+      });
+
+      // Clear OTP after successful update (one-time use)
+      this.otpService.clearOtp(newEmail);
+
+      return {
+        message: 'Email changed successfully',
+      };
+    } catch (error) {
+      // Clear OTP on error
+      this.otpService.clearOtp(newEmail);
+
+      throw new BadRequestException('Failed to update email');
+    }
   }
 
   async remove(id: string) {

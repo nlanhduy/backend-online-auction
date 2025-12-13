@@ -11,6 +11,8 @@ import { CategoriesModule } from './categories/categories.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { HttpLoggerInterceptor } from './logger/http-logger.interceptor';
 import { LoggerModule } from './logger/logger.module';
+import { MailModule } from './mail/mail.module';
+import { OtpModule } from './otp/otp.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { QuestionsModule } from './questions/questions.module';
@@ -29,6 +31,8 @@ import { UsersModule } from './user/user.module';
     UsersModule,
     FavoritesModule,
     QuestionsModule,
+    OtpModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [
