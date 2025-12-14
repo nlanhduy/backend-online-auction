@@ -59,7 +59,7 @@ export class CreateUserDto {
   @ApiPropertyOptional({
     description: 'Role of the user. Optional field. Possible values: USER, ADMIN, MODERATOR.',
     enum: UserRole,
-    example: UserRole.GUEST,
+    example: UserRole.BIDDER,
   })
   role?: UserRole;
 }

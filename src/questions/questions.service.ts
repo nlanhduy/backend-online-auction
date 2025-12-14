@@ -204,7 +204,7 @@ export class QuestionsService {
     const roots: QuestionTreeNode[] = [];
 
     items.forEach((item) => {
-      const isOwner = currentUserId === sellerId;
+      const isOwner = item.user.id === sellerId;
       const isEditable =
         !item.isDeleted && currentUserId !== null && item.user.id === currentUserId;
 

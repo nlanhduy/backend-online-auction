@@ -40,6 +40,35 @@ export class MailService {
   }
 
   /**
+   * Send OTP email for registration verification
+   */
+  async sendRegistrationOtp(email: string, otp: string): Promise<void> {
+    const mailFrom = this.configService.get<string>('MAIL_FROM', 'noreply@yourapp.com');
+
+    const mailOptions = {
+      from: mailFrom,
+      to: email,
+      subject: 'Complete Your Registration - OTP Code',
+      html: this.getRegistrationOtpTemplate(otp),
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(
+        `Registration OTP email sent successfully to ${email}. MessageId: ${info.messageId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send registration OTP email to ${email}`, error);
+
+      // Provide more specific error message
+      if (error instanceof Error) {
+        throw new Error(`Failed to send verification email: ${error.message}`);
+      }
+      throw new Error('Failed to send verification email');
+    }
+  }
+
+  /**
    * Send OTP email for email change verification
    */
   async sendChangeEmailOtp(email: string, otp: string): Promise<void> {
@@ -108,7 +137,64 @@ export class MailService {
   }
 
   /**
-   * HTML template for OTP email
+   * HTML template for registration OTP email
+   */
+  private getRegistrationOtpTemplate(otp: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #2196F3; color: white; padding: 20px; text-align: center; }
+          .content { background-color: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+          .otp-code { 
+            font-size: 32px; 
+            font-weight: bold; 
+            color: #2196F3; 
+            text-align: center; 
+            letter-spacing: 5px;
+            padding: 20px;
+            background-color: #fff;
+            border: 2px dashed #2196F3;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+          .warning { color: #ff6b6b; font-size: 14px; margin-top: 20px; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 Welcome! Complete Your Registration</h1>
+          </div>
+          <div class="content">
+            <p>Hello,</p>
+            <p>Thank you for registering! Please use the following One-Time Password (OTP) to verify your email and complete your registration:</p>
+            <div class="otp-code">${otp}</div>
+            <p>This code will expire in <strong>10 minutes</strong>.</p>
+            <div class="warning">
+              <strong>⚠️ Security Notice:</strong>
+              <ul>
+                <li>Never share this code with anyone</li>
+                <li>This code can only be used once</li>
+                <li>If you didn't request this registration, please ignore this email</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer">
+            <p>This is an automated message, please do not reply.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * HTML template for email change OTP
    */
   private getOtpEmailTemplate(otp: string): string {
     return `

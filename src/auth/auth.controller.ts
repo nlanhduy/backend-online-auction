@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import express from 'express';
+import { Public } from 'src/common/decorators/public.decorator';
 
 import {
   Body,
@@ -18,10 +19,10 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nes
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterVerifyDto } from './dto/register-verify.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
-import { Public } from 'src/common/decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -29,15 +30,26 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @Post('register')
-  @ApiOperation({ summary: 'Register a new user' })
-  @ApiResponse({ status: 201, description: 'User registered successfully.' })
+  @Post('register/request')
+  @ApiOperation({ summary: 'Request registration - sends OTP to email' })
+  @ApiResponse({ status: 200, description: 'OTP sent to email successfully.' })
+  @ApiResponse({ status: 409, description: 'Email already exists.' })
   @ApiBody({ type: RegisterDto })
-  async register(
-    @Body() registerDto: RegisterDto,
+  async registerRequest(@Body() registerDto: RegisterDto) {
+    return await this.authService.requestRegister(registerDto);
+  }
+
+  @Public()
+  @Post('register/verify')
+  @ApiOperation({ summary: 'Verify OTP and complete registration' })
+  @ApiResponse({ status: 201, description: 'User registered successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP.' })
+  @ApiBody({ type: RegisterVerifyDto })
+  async registerVerify(
+    @Body() registerVerifyDto: RegisterVerifyDto,
     @Res({ passthrough: true }) res: express.Response,
   ) {
-    const tokens = await this.authService.register(registerDto);
+    const tokens = await this.authService.verifyAndRegister(registerVerifyDto);
 
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,

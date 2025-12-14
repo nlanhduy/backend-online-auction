@@ -1,44 +1,64 @@
-import { IsDateString, IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
+  @ApiProperty({
+    description: 'Email address',
+    example: 'user@example.com',
+  })
   @IsEmail()
   @IsNotEmpty()
-  @ApiProperty({
-    description: 'Email address of the user',
-    example: 'example@gmail.com',
-  })
   email: string;
 
+  @ApiProperty({
+    description: 'Password (minimum 6 characters)',
+    example: 'password123',
+    minLength: 6,
+  })
   @IsString()
   @IsNotEmpty()
   @MinLength(6)
-  @ApiProperty({
-    description: 'Password of the user, minimum 6 characters',
-    example: 'P@ssw0rd123',
-  })
   password: string;
 
-  @IsString()
-  @IsNotEmpty()
   @ApiProperty({
     description: 'Full name of the user',
     example: 'John Doe',
   })
+  @IsString()
+  @IsNotEmpty()
   fullName: string;
 
-  @IsDateString()
   @ApiProperty({
-    description: 'Date of birth of the user',
+    description: 'Date of birth (ISO format)',
     example: '1990-01-01',
+    required: false,
   })
-  dateOfBirth: string;
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
 
-  @IsString()
   @ApiProperty({
-    description: 'Address of the user',
+    description: 'Address',
     example: '123 Main St, City, Country',
+    required: false,
   })
+  @IsOptional()
+  @IsString()
   address: string;
+
+  @ApiProperty({
+    description: 'reCAPTCHA v2 token',
+    example: '03AGdBq26...',
+  })
+  @IsString()
+  @IsNotEmpty()
+  recaptchaToken: string;
 }
