@@ -5,14 +5,16 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { CategoriesModule } from './categories/categories.module';
+import { FavoritesModule } from './favorites/favorites.module';
 import { HttpLoggerInterceptor } from './logger/http-logger.interceptor';
 import { LoggerModule } from './logger/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
+import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './user/user.module';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { RolesGuard } from './auth/guards/roles.guard';
     CategoriesModule,
     ProductsModule,
     UsersModule,
+    FavoritesModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -34,13 +38,13 @@ import { RolesGuard } from './auth/guards/roles.guard';
       useClass: HttpLoggerInterceptor,
     },
     {
-      provide:APP_GUARD,
-      useClass:JwtAuthGuard
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
     {
-      provide:APP_GUARD,
-      useClass:RolesGuard
-    }
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule {}

@@ -1,11 +1,17 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { retry, take } from 'rxjs';
+
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { retry, take } from 'rxjs';
 import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
 import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -46,12 +52,7 @@ export class ProductsService {
     return product;
   }
 
-  async update(
-    id: string, 
-    updateProductDto: UpdateProductDto, 
-    userId: string,
-    userRole: string
-  ) {
+  async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
     const existingProduct = await this.prisma.product.findUnique({ where: { id } });
     if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
@@ -89,9 +90,9 @@ export class ProductsService {
 
   // find products for homepage
   async getHomepageProducts() {
-    const now=new Date();
+    const now = new Date();
     // Query base
-    const baseSelect={
+    const baseSelect = {
       id: true,
       name: true,
       images: true,
@@ -126,44 +127,36 @@ export class ProductsService {
           },
         },
       },
-
-
-    }
+    };
 
     // Top products ending soon
-    const endingSoon=await this.prisma.product.findMany({
-      where:{
-
-      },
-      select:baseSelect,
-      orderBy:[
-        { endTime: 'asc' }
-      ],
-      take:5
+    const endingSoon = await this.prisma.product.findMany({
+      where: {},
+      select: baseSelect,
+      orderBy: [{ endTime: 'asc' }],
+      take: 5,
     });
 
     // Top 5 products with most bids
-    const mostBids=await this.prisma.product.findMany({
-      where:{
-        status:'ACTIVE',
+    const mostBids = await this.prisma.product.findMany({
+      where: {
+        status: 'ACTIVE',
         endTime: { gt: now },
       },
-      select:baseSelect,
-      orderBy:[
-        { bids:{_count:'desc'} },
-      ],
-      take:5
+      select: baseSelect,
+      orderBy: [{ bids: { _count: 'desc' } }],
+      take: 5,
     });
     // Top 5 highest priced products
-    const highestPriced=await this.prisma.product.findMany({
-      where:{
-        status:'ACTIVE',
+    const highestPriced = await this.prisma.product.findMany({
+      where: {
+        status: 'ACTIVE',
         endTime: { gt: now },
       },
-      select:baseSelect,
-      orderBy:{currentPrice:'desc'},
-      take:5,
-    })
+      select: baseSelect,
+      orderBy: { currentPrice: 'desc' },
+      take: 5,
+    });
 
     // transform data to match DTO
     const transformProduct = (product: any) => ({
@@ -179,54 +172,58 @@ export class ProductsService {
       highestBidder: product.bids[0]?.user || null,
       category: product.category,
     });
-    return{
+    return {
       endingSoon: endingSoon.map(transformProduct),
       mostBids: mostBids.map(transformProduct),
       highestPriced: highestPriced.map(transformProduct),
-    }
-
+    };
   }
 
   // search products with filter, pagination and sorting
-  async searchProducts(searchProductDto:SearchProductDto):Promise<SearchResponseDto>{
-    const {page=1, limit=10, searchType=SearchType.NAME, query, categoryId, sortBy}=searchProductDto;
-    
+  async searchProducts(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
+    const {
+      page = 1,
+      limit = 10,
+      searchType = SearchType.NAME,
+      query,
+      categoryId,
+      sortBy,
+    } = searchProductDto;
+
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
-    const now=new Date();
-    
+    const now = new Date();
+
     // Get sortBy value with default
     const sortByValue = sortBy || SortBy.END_TIME_ASC;
 
     // Build where clause=> only take active products
-    const where:any={
-      status:'ACTIVE',
+    const where: any = {
+      status: 'ACTIVE',
       endTime: { gt: now },
-    }
+    };
 
     // Handle search based on searchType
-    if (searchType === SearchType.NAME && query&&query.trim()!=='') {
+    if (searchType === SearchType.NAME && query && query.trim() !== '') {
       // Search by name only if query is provided
-      where.OR = [
-        { name: { contains: query, mode: 'insensitive' } }      ];
-    } else if (searchType === SearchType.CATEGORY && categoryId&&categoryId.trim()!=='') {
+      where.OR = [{ name: { contains: query, mode: 'insensitive' } }];
+    } else if (searchType === SearchType.CATEGORY && categoryId && categoryId.trim() !== '') {
       // Search by category only
       where.categoryId = categoryId;
     } else if (searchType === SearchType.BOTH) {
       // Search by both name and category
       if (query) {
-        where.OR = [
-          { name: { contains: query, mode: 'insensitive' } }        ];
+        where.OR = [{ name: { contains: query, mode: 'insensitive' } }];
       }
-      if (categoryId&&categoryId.trim()!=='') {
+      if (categoryId && categoryId.trim() !== '') {
         where.categoryId = categoryId;
       }
     }
 
     // Build orderBy clause
-    let orderBy:any={};
-    
+    let orderBy: any = {};
+
     switch (sortByValue) {
       case 'endTimeAsc':
       case SortBy.END_TIME_ASC:
@@ -259,7 +256,7 @@ export class ProductsService {
     }
 
     // Base select for products
-    const baseSelect={
+    const baseSelect = {
       id: true,
       name: true,
       images: true,
@@ -273,53 +270,52 @@ export class ProductsService {
           name: true,
         },
       },
-      seller:{
-        select:{
-          id:true,
-          fullName:true,
-        }
+      seller: {
+        select: {
+          id: true,
+          fullName: true,
+        },
       },
-      bids:{
+      bids: {
         where: { rejected: false },
         orderBy: { amount: 'desc' as const },
         take: 1,
-        select:{
-          amount:true,
-          user:{
-            select:{
-              id:true,
-              fullName:true,
-            }
-          }
-        }
+        select: {
+          amount: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+        },
       },
-      _count:{
-        select:{
-          bids:{
-            where:{ rejected: false},
-          }
-        }
-      }
-
+      _count: {
+        select: {
+          bids: {
+            where: { rejected: false },
+          },
+        },
+      },
     };
 
     // Execute queries
     // For mostBids, we need to fetch more records and sort manually
     const sortByString = String(sortByValue);
-    const isMostBidsSort = (sortByString === 'mostBids');
+    const isMostBidsSort = sortByString === 'mostBids';
     const fetchLimit = isMostBidsSort ? limitNum * 3 : limitNum; // Fetch more for sorting
     const fetchSkip = isMostBidsSort ? 0 : skip; // Don't skip if we need to sort
-    
-    const[products, total]=await Promise.all([
+
+    const [products, total] = await Promise.all([
       this.prisma.product.findMany({
-        where, 
+        where,
         select: baseSelect,
         orderBy,
         skip: fetchSkip,
         take: fetchLimit,
       }),
       this.prisma.product.count({ where }),
-    ])
+    ]);
 
     // Sort by mostBids if needed
     let sortedProducts = products;
@@ -345,20 +341,19 @@ export class ProductsService {
       seller: product.seller,
     }));
 
-    const totalPages=Math.ceil(total/limitNum);
+    const totalPages = Math.ceil(total / limitNum);
     return {
-      products:transformedProducts,
+      products: transformedProducts,
       total,
-      page:pageNum,
-      limit:limitNum,
+      page: pageNum,
+      limit: limitNum,
       totalPages,
-      hasNext: pageNum<totalPages,
-      hasPrevious: pageNum>1,
+      hasNext: pageNum < totalPages,
+      hasPrevious: pageNum > 1,
       searchType,
-      query:query||undefined, //return undefined if not provided
-      categoryId:categoryId||undefined, // return undefined if not provided
+      query: query || undefined, //return undefined if not provided
+      categoryId: categoryId || undefined, // return undefined if not provided
       sortBy: String(sortByValue),
     };
-
   }
 }
