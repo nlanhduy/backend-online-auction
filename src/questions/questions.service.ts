@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -7,11 +8,19 @@ import { QuestionTreeNode, QuestionWithUser } from './questions.type';
 
 @Injectable()
 export class QuestionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
   async create(userId: string, dto: CreateQuestionDto) {
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
+      include: {
+        seller: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
     });
 
     if (!product) {
@@ -28,22 +37,52 @@ export class QuestionsService {
       }
     }
 
-    return this.prisma.question.create({
+    const question = await this.prisma.question.create({
       data: {
         ...dto,
         userId,
       },
       include: {
         user: {
-          select: { id: true, fullName: true, role: true, avatar: true },
+          select: { id: true, fullName: true, email: true, role: true, avatar: true },
         },
       },
     });
+
+    if (userId !== product.sellerId) {
+      this.mailService
+        .sendQuestionNotification({
+          ownerEmail: product.seller.email,
+          ownerName: product.seller.fullName,
+          productName: product.name,
+          productId: product.id,
+          questionContent: dto.content,
+          userName: question.user.fullName,
+          userEmail: question.user.email,
+          actionType: 'created',
+          createdAt: question.createdAt,
+        })
+        .catch((error) => {
+          // Log error but don't throw - email failure shouldn't break the API
+          console.error('Failed to send question notification email:', error);
+        });
+    }
+
+    return question;
   }
 
   async update(userId: string, questionId: string, dto: UpdateQuestionDto) {
     const question = await this.prisma.question.findUnique({
       where: { id: questionId },
+      include: {
+        product: {
+          include: {
+            seller: {
+              select: { id: true, fullName: true, email: true },
+            },
+          },
+        },
+      },
     });
 
     if (!question) {
@@ -58,7 +97,7 @@ export class QuestionsService {
       throw new ForbiddenException('You can only edit your own questions');
     }
 
-    return this.prisma.question.update({
+    const updatedQuestion = await this.prisma.question.update({
       where: { id: questionId },
       data: {
         content: dto.content,
@@ -66,10 +105,34 @@ export class QuestionsService {
       },
       include: {
         user: {
-          select: { id: true, fullName: true, role: true, avatar: true },
+          select: { id: true, fullName: true, email: true, role: true, avatar: true },
         },
       },
     });
+
+    // Send email notification if the user is not the product owner
+    if (userId !== question.product.sellerId) {
+      // Fire and forget - don't await to avoid blocking the response
+      this.mailService
+        .sendQuestionNotification({
+          ownerEmail: question.product.seller.email,
+          ownerName: question.product.seller.fullName,
+          productName: question.product.name,
+          productId: question.product.id,
+          questionContent: dto.content,
+          userName: updatedQuestion.user.fullName,
+          userEmail: updatedQuestion.user.email,
+          actionType: 'updated',
+          createdAt: question.createdAt,
+          updatedAt: updatedQuestion.updatedAt,
+        })
+        .catch((error) => {
+          // Log error but don't throw - email failure shouldn't break the API
+          console.error('Failed to send question notification email:', error);
+        });
+    }
+
+    return updatedQuestion;
   }
 
   async delete(userId: string, questionId: string) {
@@ -141,7 +204,7 @@ export class QuestionsService {
     const roots: QuestionTreeNode[] = [];
 
     items.forEach((item) => {
-      const isOwner = currentUserId === sellerId;
+      const isOwner = item.user.id === sellerId;
       const isEditable =
         !item.isDeleted && currentUserId !== null && item.user.id === currentUserId;
 

@@ -1,3 +1,5 @@
+import { MailModule } from 'src/mail/mail.module';
+import { OtpModule } from 'src/otp/otp.module';
 import { UsersModule } from 'src/user/user.module';
 
 import { Module } from '@nestjs/common';
@@ -25,6 +27,8 @@ import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
         },
       }),
     }),
+    MailModule,
+    OtpModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, RefreshTokenStrategy],

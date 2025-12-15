@@ -1,3 +1,5 @@
+import { MailService } from 'src/mail/mail.service';
+
 import { Module } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +8,6 @@ import { QuestionsService } from './questions.service';
 
 @Module({
   controllers: [QuestionsController],
-  providers: [QuestionsService, PrismaService],
+  providers: [QuestionsService, PrismaService, MailService],
 })
 export class QuestionsModule {}

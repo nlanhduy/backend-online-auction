@@ -1,5 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
+import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
+
 /* eslint-disable prettier/prettier */
 import {
   Body,
@@ -24,26 +26,29 @@ import {
 import { UserRole } from '@prisma/client';
 
 import { Roles } from '../common/decorators/roles.decorator';
+import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
+import { ChangeEmailResponseDto } from './dto/change-email-response.dto';
+import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
+import { ChangeNameDto } from './dto/change-name.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
-import { UpdatePasswordDto } from './dto/update-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './user.service';
-import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 
 @ApiTags('users')
 @Controller('users')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // ==================== Current User Routes ====================
-  
+
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
   getCurrentUser(@CurrentUser() user: any) {
-    return this.usersService.findOne(user.sub);
+    return this.usersService.findOne(user.id);
   }
 
   @Patch('me')
@@ -51,39 +56,128 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Profile updated successfully' })
   @ApiResponse({ status: 403, description: 'Cannot update own role' })
   @ApiBody({ type: UpdateUserDto })
-  updateCurrentUser(
-    @CurrentUser() user: any,
-    @Body() updateUserDto: UpdateUserDto,
-  ) {
+  updateCurrentUser(@CurrentUser() user: any, @Body() updateUserDto: UpdateUserDto) {
     // Prevent users from updating their own role
     if (updateUserDto.role) {
       throw new ForbiddenException('Cannot update own role');
     }
-    return this.usersService.update(user.sub, updateUserDto);
-  }
-
-  @Patch('me/password')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Change password for current user' })
-  @ApiResponse({ status: 200, description: 'Password updated successfully' })
-  @ApiResponse({ status: 400, description: 'Current password is incorrect' })
-  @ApiBody({ type: UpdatePasswordDto })
-  updatePassword(
-    @CurrentUser() user: any,
-    @Body() updatePasswordDto: UpdatePasswordDto,
-  ) {
-    return this.usersService.updatePassword(user.sub, updatePasswordDto);
+    return this.usersService.update(user.id, updateUserDto);
   }
 
   @Get('me/rating')
   @ApiOperation({ summary: 'Get current user rating statistics' })
   @ApiResponse({ status: 200, description: 'Rating retrieved successfully' })
   getCurrentUserRating(@CurrentUser() user: any) {
-    return this.usersService.getUserRating(user.sub);
+    return this.usersService.getUserRating(user.id);
+  }
+
+  @Patch('change-name')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change full name' })
+  @ApiResponse({ status: 200, description: 'Name updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  changeName(@CurrentUser() user: any, @Body() dto: ChangeNameDto) {
+    return this.usersService.changeName(user.id, dto);
+  }
+
+  @Post('change-email/request')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request email change',
+    description:
+      'Sends an OTP to the new email address for verification. OTP expires in 10 minutes.',
+  })
+  @ApiBody({ type: ChangeEmailRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP sent successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          example: 'Verification code sent to your new email address',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already in use',
+  })
+  requestEmailChange(
+    @CurrentUser() user: any,
+    @Body() dto: ChangeEmailRequestDto,
+  ): Promise<{ message: string }> {
+    return this.usersService.requestEmailChange(user.id, dto);
+  }
+
+  @Post('change-email/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify OTP and change email',
+    description:
+      'Verifies the OTP sent to the new email and updates the user email if valid. OTP can only be used once.',
+  })
+  @ApiBody({ type: ChangeEmailVerifyDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Email changed successfully',
+    type: ChangeEmailResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired OTP / Email already in use',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: {
+          type: 'string',
+          example: 'Invalid or expired OTP',
+        },
+        error: { type: 'string', example: 'Bad Request' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - User not authenticated',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 401 },
+        message: { type: 'string', example: 'Unauthorized' },
+      },
+    },
+  })
+  verifyAndChangeEmail(
+    @CurrentUser() user: any,
+    @Body() dto: ChangeEmailVerifyDto,
+  ): Promise<ChangeEmailResponseDto> {
+    return this.usersService.verifyAndChangeEmail(user.id, dto);
+  }
+
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change password (requires old password)' })
+  @ApiResponse({ status: 200, description: 'Password changed successfully' })
+  @ApiResponse({ status: 403, description: 'Old password is incorrect' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changePassword(user.id, dto);
   }
 
   // ==================== Seller Upgrade Routes ====================
-  
+
   @Post('seller-upgrade/request')
   @Roles(UserRole.BIDDER)
   @HttpCode(HttpStatus.CREATED)
@@ -92,11 +186,8 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Only BIDDER can request upgrade' })
   @ApiResponse({ status: 400, description: 'Already have pending request or already a SELLER' })
   @ApiBody({ type: RequestSellerUpgradeDto })
-  requestSellerUpgrade(
-    @CurrentUser() user: any,
-    @Body() requestDto: RequestSellerUpgradeDto,
-  ) {
-    return this.usersService.requestSellerUpgrade(user.sub, requestDto);
+  requestSellerUpgrade(@CurrentUser() user: any, @Body() requestDto: RequestSellerUpgradeDto) {
+    return this.usersService.requestSellerUpgrade(user.id, requestDto);
   }
 
   @Get('seller-upgrade/pending')
@@ -130,7 +221,7 @@ export class UsersController {
   }
 
   // ==================== Admin Routes ====================
-  
+
   @Post()
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)

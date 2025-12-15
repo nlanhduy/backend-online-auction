@@ -1,14 +1,26 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
+import axios from 'axios';
 import * as bcrypt from 'bcrypt';
 
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
 
+import { MailService } from '../mail/mail.service';
+import { OtpService } from '../otp/otp.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterVerifyDto } from './dto/register-verify.dto';
 import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
@@ -17,11 +29,23 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
+    private readonly otpService: OtpService,
   ) {}
 
-  async register(registerDto: RegisterDto) {
-    const { email, password, fullName, dateOfBirth, address } = registerDto;
+  /**
+   * Request registration - verify reCAPTCHA and send OTP
+   */
+  async requestRegister(registerDto: RegisterDto): Promise<{ message: string }> {
+    const { email, recaptchaToken } = registerDto;
 
+    // Verify reCAPTCHA v2
+    const isRecaptchaValid = await this.verifyRecaptcha(recaptchaToken);
+    if (!isRecaptchaValid) {
+      throw new BadRequestException('reCAPTCHA verification failed');
+    }
+
+    // Check if email already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
     });
@@ -30,22 +54,68 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
-    const hashedPassword = await this.hashPassword(password);
+    // Generate OTP
+    const otp = this.otpService.generateOtp();
 
+    // Store OTP and registration data in cache
+    // We'll use a composite key to store both OTP and registration data
+    await this.otpService.storeRegistrationData(email, otp, registerDto);
+
+    // Send OTP via email
+    await this.mailService.sendRegistrationOtp(email, otp);
+
+    return {
+      message: 'Verification code sent to your email address',
+    };
+  }
+
+  /**
+   * Verify OTP and complete registration
+   */
+  async verifyAndRegister(registerVerifyDto: RegisterVerifyDto) {
+    const { email, otp } = registerVerifyDto;
+
+    // Verify OTP and get stored registration data
+    const registrationData = await this.otpService.verifyRegistrationOtp(email, otp);
+
+    if (!registrationData) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    // Double-check email availability before creating user
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      // Clear OTP as it's no longer valid
+      this.otpService.clearRegistrationData(email);
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await this.hashPassword(registrationData.password);
+
+    // Create user
     const user = await this.prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        fullName,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        role: UserRole.GUEST,
-        address: address,
+        fullName: registrationData.fullName,
+        dateOfBirth: registrationData.dateOfBirth ? new Date(registrationData.dateOfBirth) : null,
+        role: UserRole.BIDDER,
+        address: registrationData.address,
       },
     });
 
+    // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, user.role);
 
+    // Save refresh token
     await this.saveRefreshToken(user.id, tokens.refreshToken);
+
+    // Clear OTP after successful registration (one-time use)
+    this.otpService.clearRegistrationData(email);
 
     const { password: _, ...userWithoutPassword } = user;
 
@@ -124,6 +194,36 @@ export class AuthService {
     });
 
     return { message: 'Logged out successfully' };
+  }
+
+  /**
+   * Verify reCAPTCHA v2 token
+   */
+  private async verifyRecaptcha(recaptchaToken: string): Promise<boolean> {
+    if (!recaptchaToken) {
+      return false;
+    }
+
+    const secretKey = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
+    console.log(secretKey);
+    if (!secretKey) {
+      throw new Error('RECAPTCHA_SECRET_KEY is not configured');
+    }
+
+    try {
+      const response = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
+        params: {
+          secret: secretKey,
+          response: recaptchaToken,
+        },
+      });
+      console.log({ response });
+
+      return response.data.success === true;
+    } catch (error) {
+      console.error('reCAPTCHA verification error:', error);
+      return false;
+    }
   }
 
   private async generateTokens(userId: string, email: string, role: UserRole) {
