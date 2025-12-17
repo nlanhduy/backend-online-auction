@@ -16,14 +16,19 @@ import { HttpLoggerInterceptor } from './logger/http-logger.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors();
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       transformOptions: {
-        enableImplicitConversion: true, // ✅ Tự động convert types
+        enableImplicitConversion: true,
       },
       forbidNonWhitelisted: true,
     }),
@@ -33,8 +38,6 @@ async function bootstrap() {
 
   app.useGlobalFilters(new AllExceptionsFilter(logger));
   app.useGlobalInterceptors(new HttpLoggerInterceptor(logger));
-
-  app.enableCors();
 
   const port = process.env.PORT || 3000;
   logger.log(`Application is running on: http://localhost:${port}`, 'Bootstrap');
