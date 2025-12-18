@@ -51,8 +51,7 @@ export class UsersController {
     return this.usersService.findOne(user.id);
   }
 
-  @Patch('me')
-  @ApiOperation({ summary: 'Update current user profile' })
+   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: 200, description: 'Profile updated successfully' })
   @ApiResponse({ status: 403, description: 'Cannot update own role' })
   @ApiBody({ type: UpdateUserDto })
@@ -220,6 +219,28 @@ export class UsersController {
     return this.usersService.rejectSellerUpgrade(requestId);
   }
 
+  @Get('me/seller-status')
+  @ApiOperation({
+    summary: 'Get current user seller expiration status',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Seller status retrieved successfully',
+  })
+  getMySellerStatus(@CurrentUser() user: any) {
+    return this.usersService.getSellerExpirationStatus(user.id);
+  }
+
+  @Get(':id/seller-status')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get user seller expiration status (ADMIN only)',
+  })
+  getUserSellerStatus(@Param('id') id: string) {
+    return this.usersService.getSellerExpirationStatus(id);
+  }
+
+
   // ==================== Admin Routes ====================
 
   @Post()
@@ -279,5 +300,31 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  // ==================== Cron Job Test Routes ====================
+  
+  @Post('cron/check-expired-sellers')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Manually trigger check expired sellers (ADMIN only - FOR TESTING)',
+    description: 'Manually run the cron job to check and downgrade expired sellers'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Cron job executed successfully',
+    schema: {
+      example: {
+        message: 'Downgraded 2 expired sellers',
+        users: [
+          { id: 'user-id-1', email: 'user1@example.com' },
+          { id: 'user-id-2', email: 'user2@example.com' }
+        ]
+      }
+    }
+  })
+  async triggerCheckExpiredSellers() {
+    return this.usersService.checkExpiredSellers();
   }
 }
