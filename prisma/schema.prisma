@@ -17,13 +17,26 @@ enum UserRole {
   ADMIN
 }
 
+enum UpgradeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ProductStatus {
+  ACTIVE
+  COMPLETED
+  CANCELED
+}
+
 model User {
   id             String    @id @default(uuid())
   email          String    @unique
   password       String
   fullName       String
   address        String
-  avatar         String? 
+  avatar         String?
   dateOfBirth    DateTime?
   role           UserRole  @default(BIDDER)
   positiveRating Int       @default(0)
@@ -47,7 +60,10 @@ model User {
   ratingsReceived Rating[] @relation("RatingReceiver")
 
   // Questions and answers
-  questions Question[] 
+  questions Question[]
+
+  // For seller expiration
+  sellerExpiration DateTime?
 }
 
 model RefreshToken {
@@ -62,12 +78,12 @@ model RefreshToken {
 }
 
 model SellerUpgradeRequest {
-  id        String   @id @default(uuid())
+  id        String        @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    UpgradeStatus @default(PENDING) // PENDING, APPROVED, REJECTED
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   @@index([userId])
 }
@@ -85,20 +101,20 @@ model Category {
 }
 
 model Product {
-  id                 String   @id @default(uuid())
+  id                 String        @id @default(uuid())
   name               String
   description        String
   descriptionHistory String[]
-  currentPrice       Float    @default(0)
+  currentPrice       Float         @default(0)
   initialPrice       Float
   priceStep          Float
   buyNowPrice        Float?
-  autoExtend         Boolean  @default(false)
+  autoExtend         Boolean       @default(false)
   images             String[]
-  status             String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELED
+  status             ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
   endTime            DateTime
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   // Relations
   sellerId   String
@@ -171,8 +187,8 @@ model Question {
   updatedAt DateTime @updatedAt
 
   // 1. Author Relation (Unified Asker/Answerer)
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 2. Product Relation
   productId String
@@ -181,9 +197,9 @@ model Question {
   // 3. Self-Relation for Threaded Comments (Facebook style)
   // If parentId is null, it is a root question.
   // If parentId exists, it is a reply to that question.
-  parentId  String?   
-  parent    Question?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Question[] @relation("Thread") 
+  parentId String?
+  parent   Question?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
+  children Question[] @relation("Thread")
 
   @@index([userId])
   @@index([productId])

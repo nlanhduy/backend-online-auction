@@ -17,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './user/user.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UsersModule } from './user/user.module';
     QuestionsModule,
     OtpModule,
     MailModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [

@@ -14,7 +14,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { UpgradeStatus, UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeEmailRequestDto } from './dto/change-email-request.dto';
@@ -24,9 +24,11 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class UsersService {
+  private readonly SELLER_DURATION_DAYS=7;
   constructor(
     private readonly prisma: PrismaService,
     private readonly otpService: OtpService,
@@ -96,6 +98,7 @@ export class UsersService {
         negativeRating: true,
         createdAt: true,
         updatedAt: true,
+        sellerExpiration: true,
       },
     });
 
@@ -289,16 +292,32 @@ export class UsersService {
     // Check if user exists
     const user = await this.findOne(userId);
 
-    // Check if user is already a seller or admin
-    if (user.role === UserRole.SELLER || user.role === UserRole.ADMIN) {
-      throw new BadRequestException('User is already a seller or admin');
+    // Check if user is admin
+    if (user.role === UserRole.ADMIN) {
+      throw new BadRequestException('User is admin, cannot request seller upgrade');
+    }
+    
+    // Check if user is already a seller
+    if (user.role === UserRole.SELLER) {
+      if (user.sellerExpiration) {
+        const now = new Date();
+        if (user.sellerExpiration > now) {
+          const daysLeft = Math.ceil(
+            (user.sellerExpiration.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+          );
+          throw new BadRequestException(`User is already a seller with ${daysLeft} days remaining`);
+        }
+      } else {
+        // Permanent seller (no expiration)
+        throw new BadRequestException('Expiration day of user is not set properly');
+      }
     }
 
     // Check if there's a pending request
     const pendingRequest = await this.prisma.sellerUpgradeRequest.findFirst({
       where: {
         userId,
-        status: 'PENDING',
+        status: UpgradeStatus.PENDING,
       },
     });
 
@@ -306,12 +325,21 @@ export class UsersService {
       throw new ConflictException('There is already a pending seller upgrade request');
     }
 
-    // Create upgrade request
+    // Create new upgrade request
     const request = await this.prisma.sellerUpgradeRequest.create({
       data: {
         userId,
-        // You could add more fields here if needed
+        status: UpgradeStatus.PENDING,
       },
+      include:{
+        user:{
+          select:{
+            id:true,
+            email:true,
+            fullName:true,
+          }
+        }
+      }
     });
 
     return {
@@ -331,25 +359,57 @@ export class UsersService {
       throw new NotFoundException(`Upgrade request with ID ${requestId} not found`);
     }
 
-    if (request.status !== 'PENDING') {
-      throw new BadRequestException('Request has already been processed');
+    if (request.status !== UpgradeStatus.PENDING) {
+      throw new BadRequestException(`Request has already been ${request.status.toLowerCase()}`);
     }
 
-    // Update request status
-    const updatedRequest = await this.prisma.sellerUpgradeRequest.update({
-      where: { id: requestId },
-      data: { status: 'APPROVED' },
-    });
 
-    // Update user role to SELLER
-    await this.prisma.user.update({
-      where: { id: request.userId },
-      data: { role: UserRole.SELLER },
-    });
+    const now=new Date();
+    const expiresAt=new Date(now.getTime()+this.SELLER_DURATION_DAYS*24*60*60*1000); 
+    // // Update request status
+    // const updatedRequest = await this.prisma.sellerUpgradeRequest.update({
+    //   where: { id: requestId },
+    //   data: { status: UpgradeStatus.APPROVED },
+    // });
+
+    // Update request and user
+    const [updateRequest, updateUser]=await this.prisma.$transaction([
+      // Update request status
+      this.prisma.sellerUpgradeRequest.update({
+        where: { id: requestId },
+        data:{
+          status: UpgradeStatus.APPROVED,
+          updatedAt:now,
+        }
+      }),
+      // Upgrade user role to SELLER with expiration
+      this.prisma.user.update({
+        where: { id: request.userId },
+        data: {
+          role: UserRole.SELLER,
+          sellerExpiration: expiresAt,
+        },
+      })
+    ]);
+
+    // Send approval email
+    await this.mailService.sendSellerUpgradeApproval(
+      request.user.email,
+      request.user.fullName,
+      expiresAt
+    );
+
+
+
 
     return {
       message: 'Seller upgrade request approved',
-      request: updatedRequest,
+      request: updateRequest,
+      user:{
+        id: updateUser.id,
+        role: updateUser.role,
+        sellerExpiration: updateUser.sellerExpiration,
+      }
     };
   }
 
@@ -357,20 +417,21 @@ export class UsersService {
     // Find the request
     const request = await this.prisma.sellerUpgradeRequest.findUnique({
       where: { id: requestId },
+      include: { user: true },
     });
 
     if (!request) {
       throw new NotFoundException(`Upgrade request with ID ${requestId} not found`);
     }
 
-    if (request.status !== 'PENDING') {
+    if (request.status !== UpgradeStatus.PENDING) {
       throw new BadRequestException('Request has already been processed');
     }
 
     // Update request status
     const updatedRequest = await this.prisma.sellerUpgradeRequest.update({
       where: { id: requestId },
-      data: { status: 'REJECTED' },
+      data: { status: UpgradeStatus.REJECTED },
     });
 
     return {
@@ -381,7 +442,7 @@ export class UsersService {
 
   async getPendingSellerUpgradeRequests() {
     const requests = await this.prisma.sellerUpgradeRequest.findMany({
-      where: { status: 'PENDING' },
+      where: { status: UpgradeStatus.PENDING },
       include: {
         user: {
           select: {
@@ -416,5 +477,102 @@ export class UsersService {
   private async hashPassword(password: string): Promise<string> {
     const saltRounds = 10;
     return bcrypt.hash(password, saltRounds);
+  }
+
+  // Check and downgrade expired sellers, to be run periodically each hour
+  // For testing: Change to @Cron(CronExpression.EVERY_MINUTE) to test every minute
+  @Cron(CronExpression.EVERY_HOUR) // Every hour at minute 0
+  async checkExpiredSellers(){
+    const now=new Date();
+    const expiredSellers=await this.prisma.user.findMany({
+      where:{
+        role: UserRole.SELLER,
+        sellerExpiration:{
+          lt:now,
+        }
+      }
+    })
+
+    if(expiredSellers.length===0){
+      return;
+    }
+    console.log(`Downgrading ${expiredSellers.length} expired sellers to bidders.`);
+    // Downgrade all expired sellers to BIDDER
+    const downgraded=await this.prisma.$transaction(
+      expiredSellers.map(seller=>
+        this.prisma.user.update({
+          where:{id:seller.id},
+          data:{
+            role: UserRole.BIDDER,
+            sellerExpiration: null,
+          }
+        })
+      )
+    );
+
+    // Mark their upgrade requests as EXPIRED
+    await this.prisma.sellerUpgradeRequest.updateMany({
+      where:{
+        userId: {in: expiredSellers.map((u)=>u.id)},
+        status: UpgradeStatus.APPROVED,
+      },
+      data:{
+        status: UpgradeStatus.EXPIRED,
+      }
+    });
+
+    // Send expiration emails
+    for (const user of expiredSellers){
+      await this.mailService.sendSellerExpiredNotification(
+        user.email,
+        user.fullName,
+      );
+    }
+
+    console.log(`Downgraded ${downgraded.length} users from SELLER to BIDDER.`);
+    return{
+      message: `Downgraded ${downgraded.length} users from SELLER to BIDDER.`,
+      users: downgraded.map(u=>({id:u.id, email:u.email})),
+    }
+  }
+
+  // Check seller expiration status
+  async getSellerExpirationStatus(userId: string){
+    const user=await this.findOne(userId);
+    if(user.role!==UserRole.SELLER){
+      return{
+        isSeller: false,
+        message: 'User is not a seller',
+      }
+    }
+    
+    // Check if seller has expiration date
+    if(!user.sellerExpiration){
+      return{
+        isSeller: true,
+        isPermanent: true,
+        expired: false,
+        sellerExpiration: null,
+        daysLeft: null,
+        message: 'User do not have expiration date (permanent seller)', 
+      }
+    }
+
+    const now=new Date();
+    const isExpired=user.sellerExpiration<=now;
+    const daysLeft=Math.ceil(
+      (user.sellerExpiration.getTime()-now.getTime())/(1000*60*60*24)
+    );
+    
+    return{
+      isSeller: true,
+      isPermanent: false,
+      expired: isExpired,
+      sellerExpiration: user.sellerExpiration,
+      daysLeft: isExpired? 0 : daysLeft,
+      message: isExpired ? 'Seller status has expired' : `Seller status valid for ${daysLeft} more days`,
+    }
+
+
   }
 }

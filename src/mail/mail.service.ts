@@ -377,4 +377,71 @@ export class MailService {
       </html>
     `;
   }
+
+  async sendSellerUpgradeRequestConfirmation(email: string, fullName: string) {
+    await this.transporter.sendMail({
+      to: email,
+      subject: 'Seller Upgrade Request Received',
+      html: `
+        <h2>Hello ${fullName},</h2>
+        <p>We have received your request to upgrade to a seller account.</p>
+        <p>Our admin team will review your request and notify you of the decision.</p>
+        <p>Thank you for your patience!</p>
+      `,
+    });
+  }
+
+  async sendSellerUpgradeApproval(email: string, fullName: string, expiresAt: Date) {
+    const formattedDate = expiresAt.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    await this.transporter.sendMail({
+      to: email,
+      subject: 'Seller Upgrade Approved! 🎉',
+      html: `
+        <h2>Congratulations ${fullName}!</h2>
+        <p>Your seller upgrade request has been <strong>approved</strong>!</p>
+        <p>You now have seller privileges for <strong>7 days</strong>.</p>
+        <p><strong>Expires on:</strong> ${formattedDate}</p>
+        <p>Start creating your product listings now!</p>
+        <a href="${this.configService.get('FRONTEND_URL')}/products/create">Create Product</a>
+      `,
+    });
+  }
+
+  async sendSellerUpgradeRejection(email: string, fullName: string, reason?: string) {
+    await this.transporter.sendMail({
+      to: email,
+      subject: 'Seller Upgrade Request Update',
+      html: `
+        <h2>Hello ${fullName},</h2>
+        <p>We regret to inform you that your seller upgrade request has been declined.</p>
+        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+        <p>You can submit a new request in the future.</p>
+        <p>If you have questions, please contact our support team.</p>
+      `,
+    });
+  }
+
+  async sendSellerExpiredNotification(email: string, fullName: string) {
+    await this.transporter.sendMail({
+      to: email,
+      subject: 'Seller Access Expired',
+      html: `
+        <h2>Hello ${fullName},</h2>
+        <p>Your 7-day seller access has expired.</p>
+        <p>Your account has been reverted to <strong>BIDDER</strong> status.</p>
+        <p>You can request another seller upgrade anytime!</p>
+        <a href="${this.configService.get('FRONTEND_URL')}/seller-upgrade">Request Upgrade</a>
+      `,
+    });
+  }
+
+
+
+
+
 }
