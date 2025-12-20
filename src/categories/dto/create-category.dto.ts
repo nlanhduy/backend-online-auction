@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -13,6 +13,15 @@ export class CreateCategoryDto {
 
   @IsString()
   @IsOptional()
+  @ApiPropertyOptional({
+    description: 'Description of the category',
+    example: 'Category for electronic items',
+  })
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsUUID()
   @ApiPropertyOptional({
     description: 'Parent category ID, leave empty for top-level category',
     example: '1',

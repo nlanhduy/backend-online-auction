@@ -13,8 +13,8 @@ import {
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 
-import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -25,7 +25,7 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   // ==================== Public Routes ====================
-  
+
   @Public()
   @Get()
   @ApiOperation({ summary: 'Get all categories (Public)' })
@@ -37,8 +37,8 @@ export class CategoriesController {
   @Public()
   @Get('with-children')
   @ApiOperation({ summary: 'Get all parent categories with their children (Public)' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'List of parent categories with children.',
     schema: {
       example: [
@@ -48,11 +48,11 @@ export class CategoriesController {
           parentId: null,
           children: [
             { id: 'uuid-2', name: 'Laptops', parentId: 'uuid-1' },
-            { id: 'uuid-3', name: 'Phones', parentId: 'uuid-1' }
-          ]
-        }
-      ]
-    }
+            { id: 'uuid-3', name: 'Phones', parentId: 'uuid-1' },
+          ],
+        },
+      ],
+    },
   })
   findAllWithChildren() {
     return this.categoriesService.findAllWithChildren();
@@ -68,7 +68,7 @@ export class CategoriesController {
   }
 
   // ==================== Admin Only Routes ====================
-  
+
   @Post()
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
