@@ -211,6 +211,27 @@ export class UsersController {
     return this.usersService.requestSellerUpgrade(user.id, requestDto);
   }
 
+  @Get('me/seller-upgrade-requests')
+  @ApiOperation({ summary: "Get current user's seller upgrade requests" })
+  @ApiResponse({
+    status: 200,
+    description: 'Upgrade requests retrieved successfully',
+    schema: {
+      example: [
+        {
+          id: 'request-id',
+          userId: 'user-id',
+          status: 'PENDING',
+          createdAt: '2025-12-21T00:00:00.000Z',
+          updatedAt: '2025-12-21T00:00:00.000Z',
+        },
+      ],
+    },
+  })
+  getMySellerUpgradeRequests(@CurrentUser() user: any) {
+    return this.usersService.getUserUpgradeRequests(user.id);
+  }
+
   @Get('seller-upgrade/pending')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Get all pending seller upgrade requests (ADMIN only)' })

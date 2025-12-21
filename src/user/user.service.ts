@@ -526,6 +526,15 @@ export class UsersService {
     return requests;
   }
 
+  async getUserUpgradeRequests(userId: string) {
+    const requests = await this.prisma.sellerUpgradeRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return requests;
+  }
+
   async getUserRating(userId: string) {
     const user = await this.findOne(userId);
 
