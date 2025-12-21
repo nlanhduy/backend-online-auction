@@ -18,6 +18,7 @@ import { ProductsModule } from './products/products.module';
 import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './user/user.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SystemSettingsModule } from './system-setting/system-settings.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     OtpModule,
     MailModule,
     ScheduleModule.forRoot(),
+    SystemSettingsModule,
   ],
   controllers: [AppController],
   providers: [

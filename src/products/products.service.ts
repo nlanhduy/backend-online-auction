@@ -1,3 +1,4 @@
+import { SystemSettingsService } from './../system-setting/system-settings.service';
 import { retry, take } from 'rxjs';
 
 import {
@@ -15,18 +16,53 @@ import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private systemSettingsService: SystemSettingsService ) {}
+  async create(createProductDto: CreateProductDto, sellerId: string){
+    const settings=await this.systemSettingsService.getSettings();
 
-  create(createProductDto: CreateProductDto, sellerId: string) {
+    if(createProductDto.images.length < settings.minImages){
+      throw new BadRequestException(`At least ${settings.minImages} product images are required`);
+    }
+
+    if(createProductDto.buyNowPrice&&createProductDto.buyNowPrice<=createProductDto.initialPrice){
+      throw new BadRequestException(`Buy Now price must be greater than starting price`);
+    }
+
+    const startTime=new Date(createProductDto.startTime);
+    const endTime=new Date(createProductDto.endTime);
+    if(startTime>=endTime){
+      throw new BadRequestException(`End time must be after start time`);
+    }
+
+    if(startTime<=new Date()){
+      throw new BadRequestException(`Start time must be in the future`);
+    }
+
+    if(createProductDto.priceStep>createProductDto.initialPrice*0.5){
+      throw new BadRequestException(`Price step must not be greater than 50% of the starting price`);
+    }
+
     return this.prisma.product.create({
-      data: {
+      data:{
         ...createProductDto,
         sellerId,
         currentPrice: createProductDto.initialPrice,
-        descriptionHistory: [createProductDto.description],
+        descriptionHistory: [createProductDto.description] ,
+        originalEndTime: createProductDto.autoExtend? endTime : null,
+        startTime,
+        endTime,
+      },
+      include:{
+        category: true,
+        seller: { select: { id: true, fullName: true } },
       },
     });
+
+
+    
+
   }
+
 
   findAll() {
     return this.prisma.product.findMany({
@@ -52,15 +88,54 @@ export class ProductsService {
     return product;
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
-    const existingProduct = await this.prisma.product.findUnique({ where: { id } });
-    if (!existingProduct) {
+  // async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
+  //   const existingProduct = await this.prisma.product.findUnique({ where: { id } });
+  //   if (!existingProduct) {
+  //     throw new NotFoundException(`Product with id: ${id} does not exist`);
+  //   }
+
+  //   // ADMIN can update any product, SELLER can only update their own
+  //   if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
+  //     throw new ForbiddenException(`You are not allowed to update this product`);
+  //   }
+
+  //   return this.prisma.product.update({
+  //     where: { id },
+  //     data: {
+  //       ...updateProductDto,
+  //       ...(updateProductDto.description
+  //         ? { descriptionHistory: { push: updateProductDto.description } }
+  //         : {}),
+  //     },
+  //   });
+  // }
+  async update(id:string, updateProductDto: UpdateProductDto, userId: string, userRole: string){
+    const existingProduct=await this.prisma.product.findUnique({where:{id}});
+    if(!existingProduct){
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
 
-    // ADMIN can update any product, SELLER can only update their own
-    if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
+    if(userRole !== 'ADMIN' && existingProduct.sellerId !== userId){
       throw new ForbiddenException(`You are not allowed to update this product`);
+    }
+
+    if (updateProductDto.images) {
+      const settings = await this.systemSettingsService.getSettings();
+      if (updateProductDto.images.length < settings.minImages) {
+        throw new BadRequestException(
+          `Need at least ${settings.minImages} product images`,
+        );
+      }
+    }
+
+    if (updateProductDto.buyNowPrice) {
+      const priceToCompare =
+        updateProductDto.initialPrice || existingProduct.currentPrice;
+      if (updateProductDto.buyNowPrice <= priceToCompare) {
+        throw new BadRequestException(
+          'Buy now price must be greater than the current price',
+        );
+      }
     }
 
     return this.prisma.product.update({

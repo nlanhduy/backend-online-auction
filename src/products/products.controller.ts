@@ -74,7 +74,7 @@ export class ProductsController {
 
   @Post()
   @Roles(UserRole.SELLER, UserRole.ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new product (SELLER/ADMIN only)' })
   @ApiResponse({ status: 201, description: 'Product created successfully' })
@@ -82,12 +82,12 @@ export class ProductsController {
   @ApiResponse({ status: 400, description: 'Invalid product data' })
   @ApiBody({ type: CreateProductDto })
   create(@Body() createProductDto: CreateProductDto, @CurrentUser() user: any): Promise<Product> {
-    return this.productsService.create(createProductDto, user.sub);
+    return this.productsService.create(createProductDto, user.id);
   }
 
   @Patch(':id')
   @Roles(UserRole.SELLER, UserRole.ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Update product (SELLER/ADMIN)',
     description: 'SELLER can only update their own products. ADMIN can update any product.',
@@ -101,12 +101,12 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @CurrentUser() user: any,
   ): Promise<Product> {
-    return this.productsService.update(id, updateProductDto, user.sub, user.role);
+    return this.productsService.update(id, updateProductDto, user.id, user.role);
   }
 
   @Delete(':id')
   @Roles(UserRole.SELLER, UserRole.ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete product (SELLER/ADMIN)',
@@ -116,14 +116,14 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'Not allowed to delete this product' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   remove(@Param('id') id: string, @CurrentUser() user: any): Promise<Product> {
-    return this.productsService.remove(id, user.sub, user.role);
+    return this.productsService.remove(id, user.id, user.role);
   }
 
   // ==================== Admin Only Routes ====================
 
   @Get()
   @Roles(UserRole.ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get all products including inactive (ADMIN only)' })
   @ApiResponse({ status: 200, description: 'All products retrieved successfully' })
   findAll(): Promise<Product[]> {
