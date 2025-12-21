@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
+import { Public } from 'src/common/decorators/public.decorator';
 
 /* eslint-disable prettier/prettier */
 import {
@@ -32,6 +33,7 @@ import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
 import { ChangeNameDto } from './dto/change-name.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ForgotPasswordRequestDto, ForgotPasswordVerifyDto } from './dto/forget-password.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './user.service';
@@ -51,7 +53,7 @@ export class UsersController {
     return this.usersService.findOne(user.id);
   }
 
-   @ApiOperation({ summary: 'Update current user profile' })
+  @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: 200, description: 'Profile updated successfully' })
   @ApiResponse({ status: 403, description: 'Cannot update own role' })
   @ApiBody({ type: UpdateUserDto })
@@ -175,6 +177,26 @@ export class UsersController {
     return this.usersService.changePassword(user.id, dto);
   }
 
+  @Public()
+  @Post('forgot-password/request')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset (sends OTP to email)' })
+  @ApiResponse({ status: 200, description: 'OTP sent to email successfully' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  requestForgotPassword(@Body() dto: ForgotPasswordRequestDto) {
+    return this.usersService.requestForgotPassword(dto);
+  }
+
+  @Public()
+  @Post('forgot-password/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify OTP and reset password' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  verifyForgotPassword(@Body() dto: ForgotPasswordVerifyDto) {
+    return this.usersService.verifyAndResetPassword(dto);
+  }
+
   // ==================== Seller Upgrade Routes ====================
 
   @Post('seller-upgrade/request')
@@ -240,7 +262,6 @@ export class UsersController {
     return this.usersService.getSellerExpirationStatus(id);
   }
 
-
   // ==================== Admin Routes ====================
 
   @Post()
@@ -303,26 +324,26 @@ export class UsersController {
   }
 
   // ==================== Cron Job Test Routes ====================
-  
+
   @Post('cron/check-expired-sellers')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Manually trigger check expired sellers (ADMIN only - FOR TESTING)',
-    description: 'Manually run the cron job to check and downgrade expired sellers'
+    description: 'Manually run the cron job to check and downgrade expired sellers',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Cron job executed successfully',
     schema: {
       example: {
         message: 'Downgraded 2 expired sellers',
         users: [
           { id: 'user-id-1', email: 'user1@example.com' },
-          { id: 'user-id-2', email: 'user2@example.com' }
-        ]
-      }
-    }
+          { id: 'user-id-2', email: 'user2@example.com' },
+        ],
+      },
+    },
   })
   async triggerCheckExpiredSellers() {
     return this.usersService.checkExpiredSellers();
