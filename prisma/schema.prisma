@@ -64,6 +64,8 @@ model User {
 
   // For seller expiration
   sellerExpiration DateTime?
+
+  systemSettingsUpdated SystemSettings[]
 }
 
 model RefreshToken {
@@ -101,20 +103,25 @@ model Category {
 }
 
 model Product {
-  id                 String        @id @default(uuid())
+  id                 String   @id @default(uuid())
   name               String
   description        String
   descriptionHistory String[]
-  currentPrice       Float         @default(0)
+  currentPrice       Float    @default(0)
   initialPrice       Float
   priceStep          Float
   buyNowPrice        Float?
-  autoExtend         Boolean       @default(false)
-  images             String[]
-  status             ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
-  endTime            DateTime
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+
+  // Auto extension fields
+  autoExtend      Boolean       @default(false)
+  extendedCount   Int           @default(0)
+  originalEndTime DateTime?
+  images          String[]
+  status          ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
+  startTime       DateTime
+  endTime         DateTime
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   // Relations
   sellerId   String
@@ -130,6 +137,27 @@ model Product {
 
   @@index([sellerId])
   @@index([categoryId])
+  @@index([status, endTime])
+}
+
+// System config
+model SystemSettings {
+  id String @id @default(cuid())
+
+  // Auto extension settings
+  autoExtendThresholdMinutes Int  @default(5) // Time before endTime to trigger auto extension
+  extensionDuration          Int  @default(10) // Extension duration in minutes
+  maxExtensions              Int? @default(3) // Maximum number of extensions allowed
+
+  // Other system settings
+  minImages Int @default(3)
+
+  // Audit
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+  updatedUser User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
 }
 
 model Bid {
