@@ -44,6 +44,7 @@ export class UsersController {
 
   // ==================== Current User Routes ====================
 
+
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
@@ -175,6 +176,8 @@ export class UsersController {
     return this.usersService.changePassword(user.id, dto);
   }
 
+
+
   // ==================== Seller Upgrade Routes ====================
 
   @Post('seller-upgrade/request')
@@ -187,6 +190,27 @@ export class UsersController {
   @ApiBody({ type: RequestSellerUpgradeDto })
   requestSellerUpgrade(@CurrentUser() user: any, @Body() requestDto: RequestSellerUpgradeDto) {
     return this.usersService.requestSellerUpgrade(user.id, requestDto);
+  }
+
+  @Get('me/seller-upgrade-requests')
+  @ApiOperation({ summary: 'Get current user\'s seller upgrade requests' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Upgrade requests retrieved successfully',
+    schema: {
+      example: [
+        {
+          id: 'request-id',
+          userId: 'user-id',
+          status: 'PENDING',
+          createdAt: '2025-12-21T00:00:00.000Z',
+          updatedAt: '2025-12-21T00:00:00.000Z'
+        }
+      ]
+    }
+  })
+  getMySellerUpgradeRequests(@CurrentUser() user: any) {
+    return this.usersService.getUserUpgradeRequests(user.id);
   }
 
   @Get('seller-upgrade/pending')
@@ -327,4 +351,6 @@ export class UsersController {
   async triggerCheckExpiredSellers() {
     return this.usersService.checkExpiredSellers();
   }
+
+
 }
