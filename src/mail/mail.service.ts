@@ -4,7 +4,7 @@
 import * as nodemailer from 'nodemailer';
 
 // src/mail/mail.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -440,8 +440,69 @@ export class MailService {
     });
   }
 
+  async sendForgotPasswordOtp(email: string, otp: string): Promise<void> {
+    const mailFrom = this.configService.get<string>('MAIL_FROM', 'noreply@yourapp.com');
 
+    const mailOptions = {
+      from: mailFrom,
+      to: email,
+      subject: 'Password Reset Request',
+      html: this.getForgotPasswordTemplate(otp),
+    };
 
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(
+        `Forgot password OTP email sent successfully to ${email}. MessageId: ${info.messageId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send forgot password OTP email to ${email}`, error);
+      throw new BadRequestException('Failed to send reset code. Please try again.');
+    }
+  }
 
-
+  private getForgotPasswordTemplate(otp: string): string {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Password Reset</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #f8f9fa; border-radius: 10px; padding: 30px; margin-bottom: 20px;">
+        <h1 style="color: #2c3e50; margin-bottom: 20px;">Password Reset Request</h1>
+        
+        <p style="font-size: 16px; margin-bottom: 20px;">
+          We received a request to reset your password. Use the verification code below to proceed:
+        </p>
+        
+        <div style="background-color: #fff; border: 2px dashed #3498db; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+          <p style="font-size: 14px; color: #7f8c8d; margin-bottom: 10px;">Your verification code:</p>
+          <h2 style="color: #3498db; font-size: 36px; letter-spacing: 8px; margin: 0; font-weight: bold;">
+            ${otp}
+          </h2>
+        </div>
+        
+        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <p style="margin: 0; font-size: 14px; color: #856404;">
+            ⚠️ <strong>Important:</strong> This code will expire in 10 minutes.
+          </p>
+        </div>
+        
+        <p style="font-size: 14px; color: #7f8c8d; margin-top: 30px;">
+          If you didn't request this password reset, please ignore this email or contact support if you have concerns.
+        </p>
+        
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
+        
+        <p style="font-size: 12px; color: #95a5a6; margin: 0;">
+          This is an automated message, please do not reply to this email.
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+  }
 }
