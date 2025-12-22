@@ -52,6 +52,14 @@ export class CreateProductDto {
   images: string[];
 
   @ApiProperty({
+    description: 'Main product image URL',
+    example: 'https://example.com/main-image.jpg',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'Main image must not be empty' })
+  mainImage: string;
+
+  @ApiProperty({
     description: 'Starting price (VND)',
     minimum: 1000,
     example: 10000000,
