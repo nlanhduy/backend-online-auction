@@ -66,6 +66,8 @@ model User {
   sellerExpiration DateTime?
 
   systemSettingsUpdated SystemSettings[]
+
+  systemSettingsUpdated SystemSettings[]
 }
 
 model RefreshToken {
@@ -104,9 +106,11 @@ model Category {
 
 model Product {
   id                 String   @id @default(uuid())
+  id                 String   @id @default(uuid())
   name               String
   description        String
   descriptionHistory String[]
+  currentPrice       Float    @default(0)
   currentPrice       Float    @default(0)
   initialPrice       Float
   priceStep          Float
