@@ -117,11 +117,15 @@ model Product {
   extendedCount   Int           @default(0)
   originalEndTime DateTime?
   images          String[]
+  mainImage       String?
   status          ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
   startTime       DateTime
   endTime         DateTime
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  // Full-text search
+  searchVector Unsupported("tsvector")?
 
   // Relations
   sellerId   String
@@ -138,6 +142,7 @@ model Product {
   @@index([sellerId])
   @@index([categoryId])
   @@index([status, endTime])
+  @@index([searchVector], type: Gin)
 }
 
 // System config
