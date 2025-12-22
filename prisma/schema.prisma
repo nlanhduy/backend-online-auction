@@ -66,6 +66,8 @@ model User {
   sellerExpiration DateTime?
 
   systemSettingsUpdated SystemSettings[]
+
+  systemSettingsUpdated SystemSettings[]
 }
 
 model RefreshToken {
@@ -104,9 +106,11 @@ model Category {
 
 model Product {
   id                 String   @id @default(uuid())
+  id                 String   @id @default(uuid())
   name               String
   description        String
   descriptionHistory String[]
+  currentPrice       Float    @default(0)
   currentPrice       Float    @default(0)
   initialPrice       Float
   priceStep          Float
@@ -117,11 +121,15 @@ model Product {
   extendedCount   Int           @default(0)
   originalEndTime DateTime?
   images          String[]
+  mainImage       String?
   status          ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
   startTime       DateTime
   endTime         DateTime
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  // Full-text search
+  searchVector Unsupported("tsvector")?
 
   // Relations
   sellerId   String
@@ -138,6 +146,7 @@ model Product {
   @@index([sellerId])
   @@index([categoryId])
   @@index([status, endTime])
+  @@index([searchVector], type: Gin)
 }
 
 // System config
