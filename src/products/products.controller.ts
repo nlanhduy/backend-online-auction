@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
+import { get } from 'axios';
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -21,6 +22,7 @@ import { Product, UserRole } from '@prisma/client';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
+import { GetUserProductDto } from './dto/get-user-product.dto';
 import { HomepageResponseDto } from './dto/product-list-items';
 import { SearchProductDto } from './dto/search-product.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
@@ -71,6 +73,19 @@ export class ProductsController {
   }
 
   // ==================== Protected Routes (SELLER/ADMIN) ====================
+
+  @Get('my-products')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get all products (SELLER/ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'Products found successfully' })
+  @ApiResponse({ status: 403, description: 'Only SELLER or ADMIN can get products' })
+  getAllUserProducts(
+    @CurrentUser() user: any,
+    @Query() getUserProductDto: GetUserProductDto,
+  ): Promise<Product[]> {
+    return this.productsService.getAllUserProducts(user.id, getUserProductDto);
+  }
 
   @Post()
   @Roles(UserRole.SELLER, UserRole.ADMIN)

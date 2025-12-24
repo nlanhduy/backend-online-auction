@@ -1,4 +1,4 @@
-import { SystemSettingsService } from './../system-setting/system-settings.service';
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { retry, take } from 'rxjs';
 
 import {
@@ -9,60 +9,65 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemSettingsService } from '../system-setting/system-settings.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import { GetUserProductDto } from './dto/get-user-product.dto';
 import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
 import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService, private systemSettingsService: SystemSettingsService ) {}
-  async create(createProductDto: CreateProductDto, sellerId: string){
-    const settings=await this.systemSettingsService.getSettings();
+  constructor(
+    private prisma: PrismaService,
+    private systemSettingsService: SystemSettingsService,
+  ) {}
+  async create(createProductDto: CreateProductDto, sellerId: string) {
+    const settings = await this.systemSettingsService.getSettings();
 
-    if(createProductDto.images.length < settings.minImages){
+    if (createProductDto.images.length < settings.minImages) {
       throw new BadRequestException(`At least ${settings.minImages} product images are required`);
     }
 
-    if(createProductDto.buyNowPrice&&createProductDto.buyNowPrice<=createProductDto.initialPrice){
+    if (
+      createProductDto.buyNowPrice &&
+      createProductDto.buyNowPrice <= createProductDto.initialPrice
+    ) {
       throw new BadRequestException(`Buy Now price must be greater than starting price`);
     }
 
-    const startTime=new Date(createProductDto.startTime);
-    const endTime=new Date(createProductDto.endTime);
-    if(startTime>=endTime){
+    const startTime = new Date(createProductDto.startTime);
+    const endTime = new Date(createProductDto.endTime);
+    if (startTime >= endTime) {
       throw new BadRequestException(`End time must be after start time`);
     }
 
-    if(startTime<=new Date()){
+    if (startTime <= new Date()) {
       throw new BadRequestException(`Start time must be in the future`);
     }
 
-    if(createProductDto.priceStep>createProductDto.initialPrice*0.5){
-      throw new BadRequestException(`Price step must not be greater than 50% of the starting price`);
+    if (createProductDto.priceStep > createProductDto.initialPrice * 0.5) {
+      throw new BadRequestException(
+        `Price step must not be greater than 50% of the starting price`,
+      );
     }
 
     return this.prisma.product.create({
-      data:{
+      data: {
         ...createProductDto,
         sellerId,
         currentPrice: createProductDto.initialPrice,
-        descriptionHistory: [createProductDto.description] ,
-        originalEndTime: createProductDto.autoExtend? endTime : null,
+        descriptionHistory: [createProductDto.description],
+        originalEndTime: createProductDto.autoExtend ? endTime : null,
         startTime,
         endTime,
       },
-      include:{
+      include: {
         category: true,
         seller: { select: { id: true, fullName: true } },
       },
     });
-
-
-    
-
   }
-
 
   findAll() {
     return this.prisma.product.findMany({
@@ -109,32 +114,27 @@ export class ProductsService {
   //     },
   //   });
   // }
-  async update(id:string, updateProductDto: UpdateProductDto, userId: string, userRole: string){
-    const existingProduct=await this.prisma.product.findUnique({where:{id}});
-    if(!existingProduct){
+  async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
+    const existingProduct = await this.prisma.product.findUnique({ where: { id } });
+    if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
 
-    if(userRole !== 'ADMIN' && existingProduct.sellerId !== userId){
+    if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
       throw new ForbiddenException(`You are not allowed to update this product`);
     }
 
     if (updateProductDto.images) {
       const settings = await this.systemSettingsService.getSettings();
       if (updateProductDto.images.length < settings.minImages) {
-        throw new BadRequestException(
-          `Need at least ${settings.minImages} product images`,
-        );
+        throw new BadRequestException(`Need at least ${settings.minImages} product images`);
       }
     }
 
     if (updateProductDto.buyNowPrice) {
-      const priceToCompare =
-        updateProductDto.initialPrice || existingProduct.currentPrice;
+      const priceToCompare = updateProductDto.initialPrice || existingProduct.currentPrice;
       if (updateProductDto.buyNowPrice <= priceToCompare) {
-        throw new BadRequestException(
-          'Buy now price must be greater than the current price',
-        );
+        throw new BadRequestException('Buy now price must be greater than the current price');
       }
     }
 
@@ -254,6 +254,17 @@ export class ProductsService {
     };
   }
 
+  // get all user products
+  async getAllUserProducts(userId: string, getUserProductDto: GetUserProductDto) {
+    const { page = 1, limit = 10 } = getUserProductDto;
+
+    return this.prisma.product.findMany({
+      where: { sellerId: userId },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+  }
+
   // search products with filter, pagination and sorting
   async searchProducts(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
     const {
@@ -266,8 +277,11 @@ export class ProductsService {
     } = searchProductDto;
 
     // Check if FTS is available and query is provided
-    const useFTS = query && query.trim() !== '' && (searchType === SearchType.NAME || searchType === SearchType.BOTH);
-    
+    const useFTS =
+      query &&
+      query.trim() !== '' &&
+      (searchType === SearchType.NAME || searchType === SearchType.BOTH);
+
     if (useFTS) {
       const ftsAvailable = await this.checkFTSAvailability();
       if (ftsAvailable) {
@@ -275,7 +289,7 @@ export class ProductsService {
         return this.fullTextSearch(searchProductDto);
       }
     }
-    
+
     console.log('📝 Using Traditional LIKE Search');
     return this.traditionalSearch(searchProductDto);
   }
@@ -458,7 +472,7 @@ export class ProductsService {
     };
   }
 
-    private async fullTextSearch(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
+  private async fullTextSearch(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
     const {
       page = 1,
       limit = 10,
@@ -483,10 +497,7 @@ export class ProductsService {
     console.log('📊 FTS Query:', { query, tsquery, now: now.toISOString() });
 
     // Build WHERE conditions
-    const conditions: string[] = [
-      `p.status = 'ACTIVE'`,
-      `p."endTime" > $1`,
-    ];
+    const conditions: string[] = [`p.status = 'ACTIVE'`, `p."endTime" > $1`];
 
     const params: any[] = [now];
     let paramIndex = 2;
@@ -641,7 +652,7 @@ export class ProductsService {
           },
         });
 
-        if(!fullProduct){
+        if (!fullProduct) {
           return null;
         }
         const productItem: ProductItemDto = {
@@ -710,7 +721,4 @@ export class ProductsService {
         return { endTime: 'asc' };
     }
   }
-
-
-
 }
