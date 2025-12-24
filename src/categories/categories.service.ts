@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -12,8 +12,20 @@ export class CategoriesService {
     return this.prisma.category.create({ data: createCategoryDto });
   }
 
-  findAll() {
-    return this.prisma.category.findMany({ include: { children: true } });
+  async findAll() {
+    const categories = await this.prisma.category.findMany({
+      include: {
+        children: true,
+        _count: {
+          select: { products: true },
+        },
+      },
+    });
+
+    return categories.map(({ _count, ...category }) => ({
+      ...category,
+      numsOfProducts: _count.products,
+    }));
   }
 
   findAllWithChildren() {
@@ -37,8 +49,25 @@ export class CategoriesService {
       data: updateCategoryDto,
     });
   }
-
   async remove(id: string) {
-    return this.prisma.category.delete({ where: { id } });
+    const productCount = await this.prisma.product.count({
+      where: { categoryId: id },
+    });
+
+    if (productCount > 0) {
+      throw new BadRequestException('Cannot delete category because it has associated products');
+    }
+
+    const subCategoryCount = await this.prisma.category.count({
+      where: { parentId: id },
+    });
+
+    if (subCategoryCount > 0) {
+      throw new BadRequestException('Cannot delete category because it has subcategories');
+    }
+
+    return this.prisma.category.delete({
+      where: { id },
+    });
   }
 }
