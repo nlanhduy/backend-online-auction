@@ -1,0 +1,2 @@
+ALTER TABLE "Product"
+ADD COLUMN "allowNewBidders" BOOLEAN NOT NULL DEFAULT true;

@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
@@ -10,11 +8,179 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  password              String
+  fullName              String
+  role                  UserRole               @default(BIDDER)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  dateOfBirth           DateTime?
+  negativeRating        Int                    @default(0)
+  positiveRating        Int                    @default(0)
+  address               String
+  avatar                String?
+  sellerExpiration      DateTime?
+  bids                  Bid[]
+  favoriteProducts      FavoriteProduct[]
+  products              Product[]
+  questions             Question[]
+  ratingsGiven          Rating[]               @relation("RatingGiver")
+  ratingsReceived       Rating[]               @relation("RatingReceiver")
+  refreshTokens         RefreshToken[]
+  upgradeRequests       SellerUpgradeRequest[]
+  systemSettingsUpdated SystemSettings[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SellerUpgradeRequest {
+  id        String        @id @default(uuid())
+  userId    String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  status    UpgradeStatus @default(PENDING)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  parentId    String?
+  description String?
+  parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToCategory")
+  products    Product[]
+}
+
+model Product {
+  id                 String                   @id @default(uuid())
+  name               String
+  description        String
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  endTime            DateTime
+  buyNowPrice        Float?
+  autoExtend         Boolean                  @default(false)
+  sellerId           String
+  categoryId         String
+  descriptionHistory String[]
+  images             String[]
+  initialPrice       Float
+  priceStep          Float
+  winnerId           String?
+  currentPrice       Float                    @default(0)
+  status             ProductStatus            @default(ACTIVE)
+  extendedCount      Int                      @default(0)
+  originalEndTime    DateTime?
+  startTime          DateTime
+  searchVector       Unsupported("tsvector")?
+  mainImage          String?
+  allowNewBidders    Boolean                  @default(true)
+  bids               Bid[]
+  favoriteBy         FavoriteProduct[]
+  category           Category                 @relation(fields: [categoryId], references: [id])
+  seller             User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  questions          Question[]
+
+  @@index([sellerId])
+  @@index([categoryId])
+  @@index([status, endTime])
+  @@index([searchVector], map: "idx_product_search_vector", type: Gin)
+}
+
+model SystemSettings {
+  id                         String   @id @default(cuid())
+  autoExtendThresholdMinutes Int      @default(5)
+  extensionDuration          Int      @default(10)
+  maxExtensions              Int?     @default(3)
+  minImages                  Int      @default(3)
+  updatedAt                  DateTime @updatedAt
+  updatedBy                  String?
+  updatedUser                User?    @relation(fields: [updatedBy], references: [id])
+
+  @@map("system_settings")
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Float
+  createdAt DateTime @default(now())
+  userId    String
+  productId String
+  rejected  Boolean  @default(false)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model FavoriteProduct {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  value      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  giverId    String
+  receiverId String
+  giver      User     @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([giverId])
+  @@index([receiverId])
+}
+
+model Question {
+  id        String     @id @default(uuid())
+  content   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  productId String
+  parentId  String?
+  userId    String
+  isDeleted Boolean    @default(false)
+  parent    Question?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Question[] @relation("Thread")
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([parentId])
+}
+
 enum UserRole {
-  GUEST
   BIDDER
   SELLER
   ADMIN
+  GUEST
 }
 
 enum UpgradeStatus {
@@ -28,217 +194,4 @@ enum ProductStatus {
   ACTIVE
   COMPLETED
   CANCELED
-}
-
-model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  password       String
-  fullName       String
-  address        String
-  avatar         String?
-  dateOfBirth    DateTime?
-  role           UserRole  @default(BIDDER)
-  positiveRating Int       @default(0)
-  negativeRating Int       @default(0)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  // For refresh token management
-  refreshTokens RefreshToken[]
-
-  // Seller upgrade requests
-  upgradeRequests SellerUpgradeRequest[]
-
-  // Products
-  favoriteProducts FavoriteProduct[]
-  bids             Bid[]
-  products         Product[] // Products created by seller
-
-  // Ratings
-  ratingsGiven    Rating[] @relation("RatingGiver")
-  ratingsReceived Rating[] @relation("RatingReceiver")
-
-  // Questions and answers
-  questions Question[]
-
-  // For seller expiration
-  sellerExpiration DateTime?
-
-  systemSettingsUpdated SystemSettings[]
-
-  systemSettingsUpdated SystemSettings[]
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
-
-model SellerUpgradeRequest {
-  id        String        @id @default(uuid())
-  userId    String
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    UpgradeStatus @default(PENDING) // PENDING, APPROVED, REJECTED
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@index([userId])
-}
-
-model Category {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  products    Product[]
-  parentId    String?
-  description String?
-  parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryToCategory")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-}
-
-model Product {
-  id                 String   @id @default(uuid())
-  id                 String   @id @default(uuid())
-  name               String
-  description        String
-  descriptionHistory String[]
-  currentPrice       Float    @default(0)
-  currentPrice       Float    @default(0)
-  initialPrice       Float
-  priceStep          Float
-  buyNowPrice        Float?
-
-  // Auto extension fields
-  autoExtend      Boolean       @default(false)
-  extendedCount   Int           @default(0)
-  originalEndTime DateTime?
-  images          String[]
-  mainImage       String?
-  status          ProductStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELED
-  startTime       DateTime
-  endTime         DateTime
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  // Full-text search
-  searchVector Unsupported("tsvector")?
-
-  // Relations
-  sellerId   String
-  seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  categoryId String
-  category   Category          @relation(fields: [categoryId], references: [id])
-  bids       Bid[]
-  favoriteBy FavoriteProduct[]
-  questions  Question[]
-
-  // Winner
-  winnerId String?
-
-  @@index([sellerId])
-  @@index([categoryId])
-  @@index([status, endTime])
-  @@index([searchVector], type: Gin)
-}
-
-// System config
-model SystemSettings {
-  id String @id @default(cuid())
-
-  // Auto extension settings
-  autoExtendThresholdMinutes Int  @default(5) // Time before endTime to trigger auto extension
-  extensionDuration          Int  @default(10) // Extension duration in minutes
-  maxExtensions              Int? @default(3) // Maximum number of extensions allowed
-
-  // Other system settings
-  minImages Int @default(3)
-
-  // Audit
-  updatedAt   DateTime @updatedAt
-  updatedBy   String?
-  updatedUser User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  @@map("system_settings")
-}
-
-model Bid {
-  id        String   @id @default(uuid())
-  amount    Float
-  createdAt DateTime @default(now())
-
-  // Relations
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Status
-  rejected Boolean @default(false)
-
-  @@index([userId])
-  @@index([productId])
-}
-
-model FavoriteProduct {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@unique([userId, productId])
-  @@index([userId])
-  @@index([productId])
-}
-
-model Rating {
-  id        String   @id @default(uuid())
-  value     Int // +1 or -1
-  comment   String?
-  createdAt DateTime @default(now())
-
-  // Relations
-  giverId    String
-  giver      User   @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
-  receiverId String
-  receiver   User   @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  @@index([giverId])
-  @@index([receiverId])
-}
-
-model Question {
-  id        String   @id @default(uuid())
-  content   String
-  isDeleted Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 1. Author Relation (Unified Asker/Answerer)
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // 2. Product Relation
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // 3. Self-Relation for Threaded Comments (Facebook style)
-  // If parentId is null, it is a root question.
-  // If parentId exists, it is a reply to that question.
-  parentId String?
-  parent   Question?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
-  children Question[] @relation("Thread")
-
-  @@index([userId])
-  @@index([productId])
-  @@index([parentId])
 }
