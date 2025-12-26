@@ -10,8 +10,8 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-setting/system-settings.service';
+import { GetUserProductDto } from '../user/dto/get-user-product.dto';
 import { CreateProductDto } from './dto/create-product.dto';
-import { GetUserProductDto } from './dto/get-user-product.dto';
 import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
 import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -252,17 +252,6 @@ export class ProductsService {
       mostBids: mostBids.map(transformProduct),
       highestPriced: highestPriced.map(transformProduct),
     };
-  }
-
-  // get all user products
-  async getAllUserProducts(userId: string, getUserProductDto: GetUserProductDto) {
-    const { page = 1, limit = 10 } = getUserProductDto;
-
-    return this.prisma.product.findMany({
-      where: { sellerId: userId },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
   }
 
   // search products with filter, pagination and sorting
