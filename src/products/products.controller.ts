@@ -68,7 +68,7 @@ export class ProductsController {
   @ApiOperation({ summary: 'Get product details by ID (Public)' })
   @ApiResponse({ status: 200, description: 'Product found' })
   @ApiResponse({ status: 404, description: 'Product not found' })
-  findOne(@Param('id') id: string): Promise<Product> {
+  findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }
 

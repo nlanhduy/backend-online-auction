@@ -96,13 +96,37 @@ export class ProductsService {
       include: {
         seller: { select: { id: true, fullName: true } },
         category: true,
+        descriptionHistories: {
+          orderBy: { createdAt: 'desc' },
+          take: 1, // Chỉ lấy entry mới nhất
+          select: {
+            description: true,
+            createdAt: true,
+            createdBy: true,
+          },
+        },
       },
     });
 
     if (!product) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
-    return product;
+
+    // Lấy description mới nhất từ history
+    const latestHistory = product.descriptionHistories[0];
+    
+    // Destructure để bỏ descriptionHistory array cũ và description gốc
+    const { descriptionHistory, descriptionHistories, description, ...productData } = product;
+
+    // Trả về format mới với description là object
+    return {
+      ...productData,
+      description: {
+        content: latestHistory?.description || description,
+        createdAt: latestHistory?.createdAt,
+        createdBy: latestHistory?.createdBy,
+      },
+    };
   }
 
   // async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
