@@ -121,6 +121,7 @@ export class ProductsService {
     // Trả về format mới với description là object
     return {
       ...productData,
+      descriptionHistories,
       description: {
         content: latestHistory?.description || description,
         createdAt: latestHistory?.createdAt,
