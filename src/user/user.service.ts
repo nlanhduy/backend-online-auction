@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 /* eslint-disable prettier/prettier */
@@ -90,6 +93,7 @@ export class UsersService {
     const { page = 1, limit = 10 } = getUserProductDto;
 
     const skip = (page - 1) * limit;
+    const now = new Date();
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.product.findMany({
@@ -99,27 +103,59 @@ export class UsersService {
         orderBy: {
           createdAt: 'desc',
         },
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          category: {
+        include: {
+          category: true,
+
+          bids: {
+            where: { rejected: false },
+            orderBy: { amount: 'desc' },
+            take: 1,
             select: {
-              id: true,
-              name: true,
+              amount: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+
+          _count: {
+            select: {
+              bids: {
+                where: { rejected: false },
+              },
             },
           },
         },
       }),
+
       this.prisma.product.count({
         where: { sellerId: userId },
       }),
     ]);
 
+    const transformProduct = (product: any) => ({
+      id: product.id,
+      name: product.name,
+      mainImage: product.mainImage,
+      currentPrice: product.currentPrice,
+      buyNowPrice: product.buyNowPrice,
+      createdAt: product.createdAt,
+      endTime: product.endTime,
+      timeRemaining: product.endTime.getTime() - now.getTime(),
+      totalBids: product._count.bids,
+      highestBidder: product.bids[0]?.user || null,
+      category: product.category,
+    });
+
+    const mappedItems = items.map(transformProduct);
+
     const totalPages = Math.ceil(total / limit);
 
     return {
-      items,
+      items: mappedItems,
       total,
       page,
       limit,
