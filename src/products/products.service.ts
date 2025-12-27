@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { retry, take } from 'rxjs';
 
 import {
@@ -10,10 +9,14 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-setting/system-settings.service';
-import { GetUserProductDto } from '../user/dto/get-user-product.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import {
+  DescriptionHistoryDto,
+  DescriptionHistoryResponseDto,
+} from './dto/description-history.dto';
 import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
 import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
+import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
@@ -52,20 +55,35 @@ export class ProductsService {
       );
     }
 
-    return this.prisma.product.create({
-      data: {
-        ...createProductDto,
-        sellerId,
-        currentPrice: createProductDto.initialPrice,
-        descriptionHistory: [createProductDto.description],
-        originalEndTime: createProductDto.autoExtend ? endTime : null,
-        startTime,
-        endTime,
-      },
-      include: {
-        category: true,
-        seller: { select: { id: true, fullName: true } },
-      },
+    // Sử dụng transaction để tạo product và description history cùng lúc
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Tạo product
+      const product = await tx.product.create({
+        data: {
+          ...createProductDto,
+          sellerId,
+          currentPrice: createProductDto.initialPrice,
+          descriptionHistory: [createProductDto.description],
+          originalEndTime: createProductDto.autoExtend ? endTime : null,
+          startTime,
+          endTime,
+        },
+        include: {
+          category: true,
+          seller: { select: { id: true, fullName: true } },
+        },
+      });
+
+      // 2. Tạo description history entry đầu tiên
+      await tx.descriptionHistory.create({
+        data: {
+          description: createProductDto.description,
+          productId: product.id,
+          createdBy: sellerId,
+        },
+      });
+
+      return product;
     });
   }
 
@@ -84,13 +102,37 @@ export class ProductsService {
       include: {
         seller: { select: { id: true, fullName: true } },
         category: true,
+        descriptionHistories: {
+          orderBy: { createdAt: 'desc' },
+          take: 1, // Chỉ lấy entry mới nhất
+          select: {
+            description: true,
+            createdAt: true,
+            createdBy: true,
+          },
+        },
       },
     });
 
     if (!product) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
-    return product;
+
+    // Lấy description mới nhất từ history
+    const latestHistory = product.descriptionHistories[0];
+
+    // Destructure để bỏ descriptionHistory array cũ và description gốc
+    const { descriptionHistory, descriptionHistories, description, ...productData } = product;
+
+    // Trả về format mới với description là object
+    return {
+      ...productData,
+      description: {
+        content: latestHistory?.description || description,
+        createdAt: latestHistory?.createdAt,
+        createdBy: latestHistory?.createdBy,
+      },
+    };
   }
 
   // async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
@@ -115,7 +157,16 @@ export class ProductsService {
   //   });
   // }
   async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
-    const existingProduct = await this.prisma.product.findUnique({ where: { id } });
+    const existingProduct = await this.prisma.product.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        description: true,
+        currentPrice: true,
+        sellerId: true,
+      },
+    });
+
     if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
@@ -138,15 +189,240 @@ export class ProductsService {
       }
     }
 
-    return this.prisma.product.update({
-      where: { id },
-      data: {
-        ...updateProductDto,
-        ...(updateProductDto.description
-          ? { descriptionHistory: { push: updateProductDto.description } }
-          : {}),
+    // Kiểm tra xem description có thay đổi không
+    const isDescriptionChanged =
+      updateProductDto.description && updateProductDto.description !== existingProduct.description;
+
+    // Sử dụng transaction để update product và tạo history
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update product
+      const updatedProduct = await tx.product.update({
+        where: { id },
+        data: {
+          ...updateProductDto,
+          ...(updateProductDto.description
+            ? { descriptionHistory: { push: updateProductDto.description } }
+            : {}),
+        },
+        include: {
+          category: true,
+          seller: { select: { id: true, fullName: true } },
+        },
+      });
+
+      // 2. Nếu description thay đổi, tạo history entry mới
+      if (isDescriptionChanged) {
+        await tx.descriptionHistory.create({
+          data: {
+            description: updateProductDto.description!,
+            productId: id,
+            createdBy: userId,
+          },
+        });
+      }
+
+      return updatedProduct;
+    });
+  }
+
+  async getDescriptionHistory(productId: string): Promise<DescriptionHistoryResponseDto> {
+    // Kiểm tra product có tồn tại không
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        description: true,
       },
     });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Lấy tất cả description history, sắp xếp từ mới nhất đến cũ nhất
+    const historyRecords = await this.prisma.descriptionHistory.findMany({
+      where: { productId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        description: true,
+        createdAt: true,
+        createdBy: true,
+      },
+    });
+
+    return {
+      productId: product.id,
+      currentDescription: product.description,
+      history: historyRecords.map((record) => ({
+        id: record.id,
+        description: record.description,
+        createdAt: record.createdAt,
+        createdBy: record.createdBy ?? undefined,
+      })),
+      totalChanges: historyRecords.length,
+    };
+  }
+
+  // ==================== Description History CRUD ====================
+
+  /**
+   * Get single description history entry by ID
+   */
+  async getDescriptionHistoryById(historyId: string): Promise<DescriptionHistoryDto> {
+    const history = await this.prisma.descriptionHistory.findUnique({
+      where: { id: historyId },
+      select: {
+        id: true,
+        description: true,
+        createdAt: true,
+        createdBy: true,
+      },
+    });
+
+    if (!history) {
+      throw new NotFoundException(`Description history with id ${historyId} not found`);
+    }
+
+    return {
+      id: history.id,
+      description: history.description,
+      createdAt: history.createdAt,
+      createdBy: history.createdBy ?? undefined,
+    };
+  }
+
+  /**
+   * Update description history entry
+   * Nếu update entry mới nhất, sẽ tự động update product description
+   */
+  async updateDescriptionHistory(
+    historyId: string,
+    updateDto: UpdateDescriptionHistoryDto,
+    userId: string,
+    userRole: string,
+  ): Promise<DescriptionHistoryDto> {
+    const history = await this.prisma.descriptionHistory.findUnique({
+      where: { id: historyId },
+      include: {
+        product: {
+          select: {
+            id: true,
+            sellerId: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    if (!history) {
+      throw new NotFoundException(`Description history with id ${historyId} not found`);
+    }
+
+    // Check permissions: ADMIN, or original creator, or product seller
+    const isAdmin = userRole === 'ADMIN';
+    const isCreator = history.createdBy === userId;
+    const isSeller = history.product.sellerId === userId;
+
+    if (!isAdmin && !isCreator && !isSeller) {
+      throw new ForbiddenException('You do not have permission to update this description history');
+    }
+
+    // Kiểm tra xem đây có phải là entry mới nhất không
+    const latestHistory = await this.prisma.descriptionHistory.findFirst({
+      where: { productId: history.productId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const isLatestEntry = latestHistory?.id === historyId;
+
+    // Sử dụng transaction để update cả history và product (nếu là entry mới nhất)
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update description history
+      const updated = await tx.descriptionHistory.update({
+        where: { id: historyId },
+        data: {
+          description: updateDto.description,
+        },
+        select: {
+          id: true,
+          description: true,
+          createdAt: true,
+          createdBy: true,
+        },
+      });
+
+      // 2. Nếu đây là entry mới nhất, update product description
+      if (isLatestEntry) {
+        await tx.product.update({
+          where: { id: history.productId },
+          data: {
+            description: updateDto.description,
+          },
+        });
+      }
+
+      return {
+        id: updated.id,
+        description: updated.description,
+        createdAt: updated.createdAt,
+        createdBy: updated.createdBy ?? undefined,
+      };
+    });
+  }
+
+  /**
+   * Delete description history entry
+   * Only ADMIN or product seller can delete
+   */
+  async deleteDescriptionHistory(
+    historyId: string,
+    userId: string,
+    userRole: string,
+  ): Promise<{ message: string }> {
+    const history = await this.prisma.descriptionHistory.findUnique({
+      where: { id: historyId },
+      include: {
+        product: {
+          select: {
+            id: true,
+            sellerId: true,
+          },
+        },
+      },
+    });
+
+    if (!history) {
+      throw new NotFoundException(`Description history with id ${historyId} not found`);
+    }
+
+    // Check permissions: ADMIN or product seller
+    const isAdmin = userRole === 'ADMIN';
+    const isSeller = history.product.sellerId === userId;
+
+    if (!isAdmin && !isSeller) {
+      throw new ForbiddenException('You do not have permission to delete this description history');
+    }
+
+    // Check if this is the only history entry for the product
+    const historyCount = await this.prisma.descriptionHistory.count({
+      where: { productId: history.product.id },
+    });
+
+    if (historyCount <= 1) {
+      throw new BadRequestException(
+        'Cannot delete the last description history entry. Product must have at least one history record.',
+      );
+    }
+
+    await this.prisma.descriptionHistory.delete({
+      where: { id: historyId },
+    });
+
+    return {
+      message: `Description history entry deleted successfully`,
+    };
   }
 
   async remove(id: string, userId: string, userRole: string) {

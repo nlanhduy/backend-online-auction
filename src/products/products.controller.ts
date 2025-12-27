@@ -26,6 +26,8 @@ import { SearchProductDto } from './dto/search-product.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+import { DescriptionHistoryResponseDto, DescriptionHistoryDto } from './dto/description-history.dto';
+import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 
 @ApiTags('products')
 @Controller('products')
@@ -66,8 +68,29 @@ export class ProductsController {
   @ApiOperation({ summary: 'Get product details by ID (Public)' })
   @ApiResponse({ status: 200, description: 'Product found' })
   @ApiResponse({ status: 404, description: 'Product not found' })
-  findOne(@Param('id') id: string): Promise<Product> {
+  findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
+  }
+
+  @Public()
+  @Get(':id/description-history')
+  @ApiOperation({ 
+    summary: 'Get description change history of a product (Public)',
+    description: 'View all description changes with timestamps and who made them'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Description history retrieved successfully',
+    type: DescriptionHistoryResponseDto 
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Product not found' 
+  })
+  async getDescriptionHistory(
+    @Param('id') id: string
+  ): Promise<DescriptionHistoryResponseDto> {
+    return await this.productsService.getDescriptionHistory(id);
   }
 
   // ==================== Protected Routes (SELLER/ADMIN) ====================
@@ -128,5 +151,84 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: 'All products retrieved successfully' })
   findAll(): Promise<Product[]> {
     return this.productsService.findAll();
+  }
+
+  // ==================== Description History CRUD ====================
+
+  @Public()
+  @Get('description-history/:historyId')
+  @ApiOperation({ 
+    summary: 'Get single description history entry (Public)',
+    description: 'Get details of a specific description history entry by ID'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'History entry retrieved successfully',
+    type: DescriptionHistoryDto 
+  })
+  @ApiResponse({ status: 404, description: 'History entry not found' })
+  async getHistoryById(
+    @Param('historyId') historyId: string
+  ): Promise<DescriptionHistoryDto> {
+    return await this.productsService.getDescriptionHistoryById(historyId);
+  }
+
+  @Patch('description-history/:historyId')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ 
+    summary: 'Update description history entry (SELLER/ADMIN)',
+    description: 'Update a description history entry. Only creator, product seller, or admin can update.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'History entry updated successfully',
+    type: DescriptionHistoryDto 
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed to update this history entry' })
+  @ApiResponse({ status: 404, description: 'History entry not found' })
+  async updateHistory(
+    @Param('historyId') historyId: string,
+    @Body() updateDto: UpdateDescriptionHistoryDto,
+    @CurrentUser() user: any,
+  ): Promise<DescriptionHistoryDto> {
+    return await this.productsService.updateDescriptionHistory(
+      historyId, 
+      updateDto, 
+      user.id, 
+      user.role
+    );
+  }
+
+  @Delete('description-history/:historyId')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Delete description history entry (SELLER/ADMIN)',
+    description: 'Delete a history entry. Only product seller or admin can delete. Cannot delete the last entry.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'History entry deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Description history entry deleted successfully' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Cannot delete the last history entry' })
+  @ApiResponse({ status: 403, description: 'Not allowed to delete this history entry' })
+  @ApiResponse({ status: 404, description: 'History entry not found' })
+  async deleteHistory(
+    @Param('historyId') historyId: string,
+    @CurrentUser() user: any,
+  ): Promise<{ message: string }> {
+    return await this.productsService.deleteDescriptionHistory(
+      historyId, 
+      user.id, 
+      user.role
+    );
   }
 }
