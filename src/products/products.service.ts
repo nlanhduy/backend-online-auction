@@ -1,4 +1,5 @@
 import { retry, take } from 'rxjs';
+import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
 import {
   BadRequestException,
@@ -87,13 +88,82 @@ export class ProductsService {
     });
   }
 
-  findAll() {
-    return this.prisma.product.findMany({
-      include: {
-        category: true,
-        seller: { select: { id: true, fullName: true } },
-      },
-    });
+  async findAll({ getUserProductDto }: { getUserProductDto: GetUserProductDto }) {
+    const { page = 1, limit = 10 } = getUserProductDto;
+    const skip = (page - 1) * limit;
+    const now = new Date();
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        skip,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          category: true,
+
+          seller: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+
+          bids: {
+            where: { rejected: false },
+            orderBy: { amount: 'desc' },
+            take: 1,
+            select: {
+              amount: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+
+          _count: {
+            select: {
+              bids: {
+                where: { rejected: false },
+              },
+            },
+          },
+        },
+      }),
+
+      this.prisma.product.count(),
+    ]);
+
+    const mappedItems = items.map((product) => ({
+      id: product.id,
+      name: product.name,
+      mainImage: product.mainImage,
+      currentPrice: product.currentPrice,
+      buyNowPrice: product.buyNowPrice,
+      createdAt: product.createdAt,
+      endTime: product.endTime,
+      timeRemaining: product.endTime.getTime() - now.getTime(),
+      totalBids: product._count.bids,
+      highestBidder: product.bids[0]?.user || null,
+      category: product.category,
+      seller: product.seller,
+    }));
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items: mappedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrevious: page > 1,
+    };
   }
 
   async findOne(id: string) {

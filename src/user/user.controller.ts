@@ -15,6 +15,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -67,10 +68,10 @@ export class UsersController {
   }
 
   //Get my products
-  @Post  ('me/products')
+  @Get('me/products')
   @ApiOperation({ summary: 'Get current user products' })
   @ApiResponse({ status: 200, description: 'Products retrieved successfully' })
-  getCurrentUserProducts(@CurrentUser() user: any, @Body() getUserProductDto: GetUserProductDto) {
+  getCurrentUserProducts(@CurrentUser() user: any, @Query() getUserProductDto: GetUserProductDto) {
     return this.usersService.getAllUserProducts(user.id, getUserProductDto);
   }
 

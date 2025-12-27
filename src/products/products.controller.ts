@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
+import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -21,13 +22,16 @@ import { Product, UserRole } from '@prisma/client';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
+import {
+  DescriptionHistoryDto,
+  DescriptionHistoryResponseDto,
+} from './dto/description-history.dto';
 import { HomepageResponseDto } from './dto/product-list-items';
 import { SearchProductDto } from './dto/search-product.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
+import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
-import { DescriptionHistoryResponseDto, DescriptionHistoryDto } from './dto/description-history.dto';
-import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 
 @ApiTags('products')
 @Controller('products')
@@ -74,22 +78,20 @@ export class ProductsController {
 
   @Public()
   @Get(':id/description-history')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get description change history of a product (Public)',
-    description: 'View all description changes with timestamps and who made them'
+    description: 'View all description changes with timestamps and who made them',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Description history retrieved successfully',
-    type: DescriptionHistoryResponseDto 
+    type: DescriptionHistoryResponseDto,
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Product not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Product not found',
   })
-  async getDescriptionHistory(
-    @Param('id') id: string
-  ): Promise<DescriptionHistoryResponseDto> {
+  async getDescriptionHistory(@Param('id') id: string): Promise<DescriptionHistoryResponseDto> {
     return await this.productsService.getDescriptionHistory(id);
   }
 
@@ -149,41 +151,38 @@ export class ProductsController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get all products including inactive (ADMIN only)' })
   @ApiResponse({ status: 200, description: 'All products retrieved successfully' })
-  findAll(): Promise<Product[]> {
-    return this.productsService.findAll();
+  findAll(@Query() getUserProductDto: GetUserProductDto) {
+    return this.productsService.findAll({ getUserProductDto });
   }
-
-  // ==================== Description History CRUD ====================
 
   @Public()
   @Get('description-history/:historyId')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get single description history entry (Public)',
-    description: 'Get details of a specific description history entry by ID'
+    description: 'Get details of a specific description history entry by ID',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'History entry retrieved successfully',
-    type: DescriptionHistoryDto 
+    type: DescriptionHistoryDto,
   })
   @ApiResponse({ status: 404, description: 'History entry not found' })
-  async getHistoryById(
-    @Param('historyId') historyId: string
-  ): Promise<DescriptionHistoryDto> {
+  async getHistoryById(@Param('historyId') historyId: string): Promise<DescriptionHistoryDto> {
     return await this.productsService.getDescriptionHistoryById(historyId);
   }
 
   @Patch('description-history/:historyId')
   @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Update description history entry (SELLER/ADMIN)',
-    description: 'Update a description history entry. Only creator, product seller, or admin can update.'
+    description:
+      'Update a description history entry. Only creator, product seller, or admin can update.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'History entry updated successfully',
-    type: DescriptionHistoryDto 
+    type: DescriptionHistoryDto,
   })
   @ApiResponse({ status: 403, description: 'Not allowed to update this history entry' })
   @ApiResponse({ status: 404, description: 'History entry not found' })
@@ -193,10 +192,10 @@ export class ProductsController {
     @CurrentUser() user: any,
   ): Promise<DescriptionHistoryDto> {
     return await this.productsService.updateDescriptionHistory(
-      historyId, 
-      updateDto, 
-      user.id, 
-      user.role
+      historyId,
+      updateDto,
+      user.id,
+      user.role,
     );
   }
 
@@ -204,19 +203,20 @@ export class ProductsController {
   @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Delete description history entry (SELLER/ADMIN)',
-    description: 'Delete a history entry. Only product seller or admin can delete. Cannot delete the last entry.'
+    description:
+      'Delete a history entry. Only product seller or admin can delete. Cannot delete the last entry.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'History entry deleted successfully',
     schema: {
       type: 'object',
       properties: {
-        message: { type: 'string', example: 'Description history entry deleted successfully' }
-      }
-    }
+        message: { type: 'string', example: 'Description history entry deleted successfully' },
+      },
+    },
   })
   @ApiResponse({ status: 400, description: 'Cannot delete the last history entry' })
   @ApiResponse({ status: 403, description: 'Not allowed to delete this history entry' })
@@ -225,10 +225,6 @@ export class ProductsController {
     @Param('historyId') historyId: string,
     @CurrentUser() user: any,
   ): Promise<{ message: string }> {
-    return await this.productsService.deleteDescriptionHistory(
-      historyId, 
-      user.id, 
-      user.role
-    );
+    return await this.productsService.deleteDescriptionHistory(historyId, user.id, user.role);
   }
 }
