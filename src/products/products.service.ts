@@ -993,6 +993,29 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Admin update product status and winner
+   * Used to manually complete auctions or set winners
+   */
+  async adminUpdateProduct(id: string, adminUpdateDto: any): Promise<any> {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+    });
 
+    if (!product) {
+      throw new NotFoundException(`Product with id ${id} not found`);
+    }
 
+    return this.prisma.product.update({
+      where: { id },
+      data: {
+        ...(adminUpdateDto.status && { status: adminUpdateDto.status }),
+        ...(adminUpdateDto.winnerId && { winnerId: adminUpdateDto.winnerId }),
+      },
+      include: {
+        category: true,
+        seller: { select: { id: true, fullName: true } },
+      },
+    });
+  }
 }

@@ -18,9 +18,14 @@ import { BidsService } from './bids.service';
 import { PlaceBidDto } from './dto/place-bid.dto';
 import { BidResponseDto, BidHistoryItemDto } from './dto/bid-response.dto';
 import { ValidateBidResponseDto } from './dto/validate-bid.dto';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
+import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 
 @ApiTags('Bids')
 @Controller('bids')
+@ApiBearerAuth('access-token')
+@Roles(UserRole.BIDDER)
 export class BidsController {
   constructor(private readonly bidsService: BidsService) {}
 
@@ -36,15 +41,11 @@ export class BidsController {
     type: ValidateBidResponseDto 
   })
   @ApiResponse({ status: 404, description: 'Product not found' })
-  @ApiBearerAuth()
-  // @UseGuards(JwtAuthGuard) // Uncomment và thêm guard khi đã có auth
   async validateBid(
     @Param('productId') productId: string,
-    @Request() req: any,
+    @CurrentUser() user: any,
   ): Promise<ValidateBidResponseDto> {
-    // Lấy userId từ req.user.id sau khi implement auth guard
-    const userId = req.user?.id || 'mock-user-id'; // TODO: Thay bằng real user ID
-    return await this.bidsService.validateBid(productId, userId);
+    return await this.bidsService.validateBid(productId, user.id);
   }
 
   @Post()
@@ -60,15 +61,11 @@ export class BidsController {
   @ApiResponse({ status: 400, description: 'Invalid bid amount or missing confirmation' })
   @ApiResponse({ status: 403, description: 'User not allowed to bid (low rating or not permitted by seller)' })
   @ApiResponse({ status: 404, description: 'Product not found' })
-  @ApiBearerAuth()
-  // @UseGuards(JwtAuthGuard) // Uncomment và thêm guard khi đã có auth
   async placeBid(
     @Body() placeBidDto: PlaceBidDto,
-    @Request() req: any,
+    @CurrentUser() user: any,
   ): Promise<BidResponseDto> {
-    // Lấy userId từ req.user.id sau khi implement auth guard
-    const userId = req.user?.id || 'mock-user-id'; // TODO: Thay bằng real user ID
-    return await this.bidsService.placeBid(placeBidDto, userId);
+    return await this.bidsService.placeBid(placeBidDto, user.id);
   }
 
   @Get('history/:productId')
@@ -84,9 +81,9 @@ export class BidsController {
   })
   async getBidHistory(
     @Param('productId') productId: string,
-    @Request() req: any,
+    @CurrentUser() user: any,
   ): Promise<BidHistoryItemDto[]> {
-    const userId=req.user?.id || null; // Take userId if available
+    const userId = user?.id || null;
     return await this.bidsService.getBidHistory(productId, userId);
   }
 }

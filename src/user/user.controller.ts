@@ -310,18 +310,40 @@ export class UsersController {
     return this.usersService.getMyWonProducts(user.id, page, limit);
   }
 
+  @Get('me/given-ratings')
+  @ApiOperation({summary:'Get ratings I have given to others'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiResponse({ status: 200, description: 'Ratings given retrieved successfully' })
+  getMyGivenRatings(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyGivenRatings(user.id, page, limit);
+  }
+
   @Post('ratings')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Rate a seller (+1 or -1) with optional comment' })
+  @ApiOperation({ summary: 'Rate a user (+1 or -1) with optional comment. BIDDER can rate SELLER after winning, SELLER can rate BIDDER after selling' })
   @ApiBody({ type: CreateRatingDto })
   @ApiResponse({ status: 201, description: 'Rating created successfully' })
-  @ApiResponse({ status: 400, description: 'Cannot rate yourself / Can only rate sellers / Must purchase first' })
-  @ApiResponse({ status: 409, description: 'Already rated this seller' })
+  @ApiResponse({ status: 400, description: 'Cannot rate yourself / Invalid rating relationship / Must have transaction first' })
+  @ApiResponse({ status: 409, description: 'Already rated this user' })
   createRating(
     @CurrentUser() user: any,
     @Body() dto: CreateRatingDto,
   ) {
     return this.usersService.createRating(user.id, dto);
+  }
+
+  // ==================== Seller Routes ====================
+
+  @Get('me/completed-sales')
+  @Roles(UserRole.SELLER)
+  @ApiOperation({summary:'Get products I have sold with winners (SELLER only)'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiResponse({ status: 200, description: 'Completed sales retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Only sellers can access this endpoint' })
+  getMyCompletedSales(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyCompletedSales(user.id, page, limit);
   }
 
 

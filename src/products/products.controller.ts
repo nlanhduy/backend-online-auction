@@ -25,6 +25,7 @@ import { HomepageResponseDto } from './dto/product-list-items';
 import { SearchProductDto } from './dto/search-product.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
 import { ProductsService } from './products.service';
 import { DescriptionHistoryResponseDto, DescriptionHistoryDto } from './dto/description-history.dto';
 import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
@@ -151,6 +152,23 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: 'All products retrieved successfully' })
   findAll(): Promise<Product[]> {
     return this.productsService.findAll();
+  }
+
+  @Patch(':id/admin')
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Admin update product status/winner (ADMIN only)',
+    description: 'Admin can update product status (COMPLETED, CANCELED) and set winnerId'
+  })
+  @ApiResponse({ status: 200, description: 'Product updated successfully' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  @ApiBody({ type: AdminUpdateProductDto })
+  async adminUpdateProduct(
+    @Param('id') id: string,
+    @Body() adminUpdateDto: AdminUpdateProductDto,
+  ): Promise<Product> {
+    return this.productsService.adminUpdateProduct(id, adminUpdateDto);
   }
 
   // ==================== Description History CRUD ====================

@@ -681,6 +681,46 @@ export class UsersService {
     }
   }
 
+  // Get ratings that current user has GIVEN to others
+  async getMyGivenRatings(userId:string, page=1, limit=10){
+    const skip=(page-1)*limit;
+    
+    const [ratings, total]=await Promise.all([
+      this.prisma.rating.findMany({
+        where:{
+          giverId:userId
+        },
+        include:{
+          receiver:{
+            select:{
+              id:true,
+              fullName: true,
+              avatar: true,
+              role: true,
+            }
+          }
+        },
+        orderBy:{
+          createdAt: 'desc',
+        },
+        skip,
+        take:limit
+      }),
+      this.prisma.rating.count({
+        where:{
+          giverId:userId
+        }
+      })
+    ]);
+
+    return{
+      items: ratings,
+      total,
+      page,
+      limit,
+    }
+  }
+
   async getMyActiveBids(userId:string, page=1, limit=10){
     const skip=(page-1)*limit;
 
@@ -763,7 +803,10 @@ export class UsersService {
             orderBy:{amount:'desc'},
             take:1,
           }
-        }
+        },
+        orderBy:{endTime:'desc'},
+        skip,
+        take:limit
       }),
       this.prisma.product.count({
         where:{
@@ -782,6 +825,68 @@ export class UsersService {
       limit,
     }
   }
+
+  // Get products that seller has sold (with winners) - FOR SELLER
+  async getMyCompletedSales(userId: string, page=1, limit=10){
+    const skip=(page-1)*limit;
+    
+    const [products, total]=await Promise.all([
+      this.prisma.product.findMany({
+        where:{
+          sellerId: userId,
+          status:'COMPLETED',
+          winnerId: { not: null }, // Must have a winner
+        },
+        include:{
+          category:true,
+          bids:{
+            where:{userId:{not:userId}}, // Exclude seller's own bids
+            orderBy:{amount:'desc'},
+            take:1,
+          }
+        },
+        orderBy:{endTime:'desc'},
+        skip,
+        take:limit
+      }),
+      this.prisma.product.count({
+        where:{
+          sellerId: userId,
+          status:'COMPLETED',
+          winnerId: { not: null },
+        }
+      })
+    ]);
+
+    // Fetch winner info separately for each product
+    const productsWithWinner = await Promise.all(
+      products.map(async (product) => {
+        const winner = product.winnerId ? await this.prisma.user.findUnique({
+          where: { id: product.winnerId },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            positiveRating: true,
+            negativeRating: true,
+          }
+        }) : null;
+
+        return {
+          ...product,
+          winner,
+          finalPrice: product.currentPrice,
+        };
+      })
+    );
+
+    return{
+      items: productsWithWinner,
+      total,
+      page,
+      limit,
+    }
+  }
   async createRating(giverId:string, dto: CreateRatingDto){
     const { receiverId, value, comment }=dto;
     // User cannot rate themselves
@@ -789,7 +894,7 @@ export class UsersService {
       throw new BadRequestException('Cannot rate yourself');
     }
 
-    // Check if receiver exists and a seller or not
+    // Check if receiver exists
     const receiver =await this.prisma.user.findUnique({
       where:{id: receiverId},
     });
@@ -797,22 +902,47 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    if(receiver.role!==UserRole.SELLER){
-      throw new BadRequestException('Can only rate sellers');
+    // Get giver info
+    const giver = await this.prisma.user.findUnique({
+      where:{id: giverId},
+    });
+
+    if(!giver){
+      throw new NotFoundException('Giver user not found');
     }
 
-    // Only allow giver have been purchased from recerver to rate them
-    // const hasPurchased=await this.prisma.product.count({
-    //   where:{
-    //     sellerId:receiverId,
-    //     winnerId: giverId,
-    //     status:'COMPLETED',
-    //   }
-    // })
-
-    // if(hasPurchased===0){
-    //   throw new BadRequestException('You can only rate sellers you have purchased from')
-    // }
+    // Validate rating relationship:
+    // Case 1: BIDDER rates SELLER (after winning)
+    // Case 2: SELLER rates BIDDER (after selling)
+    if(giver.role===UserRole.BIDDER && receiver.role===UserRole.SELLER){
+      // Bidder can rate seller if they won from that seller
+      const hasPurchased=await this.prisma.product.count({
+        where:{
+          sellerId:receiverId,
+          winnerId: giverId,
+          status:'COMPLETED',
+        }
+      });
+      
+      if(hasPurchased===0){
+        throw new BadRequestException('You can only rate sellers you have purchased from');
+      }
+    } else if(giver.role===UserRole.SELLER && receiver.role===UserRole.BIDDER){
+      // Seller can rate bidder if that bidder won from seller
+      const hasSold=await this.prisma.product.count({
+        where:{
+          sellerId:giverId,
+          winnerId: receiverId,
+          status:'COMPLETED',
+        }
+      });
+      
+      if(hasSold===0){
+        throw new BadRequestException('You can only rate buyers who have won your products');
+      }
+    } else {
+      throw new BadRequestException('Invalid rating relationship. Only BIDDER can rate SELLER or SELLER can rate BIDDER');
+    }
 
     // If user has already rated the receiver, prevent multiple ratings
     const existingRating=await this.prisma.rating.findFirst({
@@ -842,6 +972,7 @@ export class UsersService {
               fullName:true,
               positiveRating: true,
               negativeRating: true,
+              role: true,
             }
           }
         }
