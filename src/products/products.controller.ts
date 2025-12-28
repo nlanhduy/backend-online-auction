@@ -94,6 +94,27 @@ export class ProductsController {
     return await this.productsService.getDescriptionHistory(id);
   }
 
+  @ApiBearerAuth('access-token')
+  @Get(':productId/review-permission')
+  @ApiOperation({ 
+    summary: 'Check if user can rate/review the product',
+    description: 'Returns permission status and reason. User can rate if they are the seller (rate winner) or winner (rate seller) of a completed product'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Permission check successful'
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Product not found' 
+  })
+  async checkReviewPermission(
+    @Param('productId') productId: string,
+    @CurrentUser() user: any
+  ) {
+    return this.productsService.checkReviewPermission(productId, user.id);
+  }
+
   // ==================== Protected Routes (SELLER/ADMIN) ====================
 
   @Post()
