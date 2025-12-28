@@ -19,6 +19,7 @@ import { QuestionsModule } from './questions/questions.module';
 import { UsersModule } from './user/user.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SystemSettingsModule } from './system-setting/system-settings.module';
+import { BidsModule } from './bids/bids.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SystemSettingsModule } from './system-setting/system-settings.module';
     MailModule,
     ScheduleModule.forRoot(),
     SystemSettingsModule,
+    BidsModule,
   ],
   controllers: [AppController],
   providers: [
