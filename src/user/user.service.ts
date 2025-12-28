@@ -26,6 +26,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { ForgotPasswordRequestDto, ForgotPasswordVerifyDto } from './dto/forget-password.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateRatingDto } from './dto/create-rating.dto';
 
 @Injectable()
 export class UsersService {
@@ -646,5 +647,217 @@ export class UsersService {
         ? 'Seller status has expired'
         : `Seller status valid for ${daysLeft} more days`,
     };
+  }
+
+  async getUserRatingDetails(userId:string){
+    const user=await this.findOne(userId);
+
+    const ratings=await this.prisma.rating.findMany({
+      where:{
+        receiverId:userId
+      },
+      include:{
+        giver:{
+          select:{
+            id:true,
+            fullName: true,
+            avatar: true,
+          }
+        }
+      },
+      orderBy:{
+        createdAt: 'desc',
+      }
+
+    })
+    const totalRatings=user.positiveRating + user.negativeRating;
+    const positivePercentage=totalRatings>0?(user.positiveRating/totalRatings)*100:0;
+    return{
+      positiveRating: user.positiveRating,
+      negativeRating: user.negativeRating,
+      totalRatings,
+      positivePercentage,
+      ratings,
+    }
+  }
+
+  async getMyActiveBids(userId:string, page=1, limit=10){
+    const skip=(page-1)*limit;
+
+    // Take all product that user has bid on and the bid is not rejected
+    const bids=await this.prisma.bid.findMany({
+      where:{
+        userId,
+        rejected:false,
+        product:{
+          status: 'ACTIVE',
+        },
+      },
+      include:{
+        product:{
+          include:{
+            
+            category:true,
+            seller:{
+              select:{
+                id:true,
+                fullName: true,
+              }
+            },
+            _count:{
+              select:{
+                bids:true,
+              }
+            },
+          }
+        }
+      },
+      orderBy:{ createdAt: 'desc' },
+      distinct: ['productId'], // one product only take one time
+      skip,
+      take:limit
+    });
+
+    // count total unique products
+    const total =await this.prisma.bid.findMany({
+      where:{
+        userId,
+        rejected:false,
+        product:{status: 'ACTIVE'},
+      },
+      distinct: ['productId'],
+      select:{productId:true}
+    })
+    return {
+      items: bids.map(bid => ({
+        bidId: bid.id,
+        myBidAmount: bid.amount,
+        bidTime: bid.createdAt,
+        product: bid.product,
+      })),
+      total: total.length,
+      page,
+      limit,
+
+    }
+  }
+  async getMyWonProducts(userId: string, page=1, limit=10){ // get all the won product from bidder
+    const skip=(page-1)*limit;
+    const [products, total]=await Promise.all([
+      this.prisma.product.findMany({
+        where:{
+          winnerId: userId,
+          status:'COMPLETED',
+        },
+        include:{
+          category:true,
+          seller:{
+            select:{
+              id:true, 
+              fullName:true,
+              email:true,
+            }
+          },
+          bids:{
+            where:{userId},
+            orderBy:{amount:'desc'},
+            take:1,
+          }
+        }
+      }),
+      this.prisma.product.count({
+        where:{
+          winnerId: userId,
+          status:'COMPLETED',
+        }
+      })
+    ])
+    return{
+      items: products.map(product=>({
+        ...product,
+        myWinningBid: product.bids[0]?.amount||product.currentPrice,
+      })),
+      total,
+      page,
+      limit,
+    }
+  }
+  async createRating(giverId:string, dto: CreateRatingDto){
+    const { receiverId, value, comment }=dto;
+    // User cannot rate themselves
+    if(giverId===receiverId){
+      throw new BadRequestException('Cannot rate yourself');
+    }
+
+    // Check if receiver exists and a seller or not
+    const receiver =await this.prisma.user.findUnique({
+      where:{id: receiverId},
+    });
+    if(!receiver){
+      throw new NotFoundException('User not found');
+    }
+
+    if(receiver.role!==UserRole.SELLER){
+      throw new BadRequestException('Can only rate sellers');
+    }
+
+    // Only allow giver have been purchased from recerver to rate them
+    // const hasPurchased=await this.prisma.product.count({
+    //   where:{
+    //     sellerId:receiverId,
+    //     winnerId: giverId,
+    //     status:'COMPLETED',
+    //   }
+    // })
+
+    // if(hasPurchased===0){
+    //   throw new BadRequestException('You can only rate sellers you have purchased from')
+    // }
+
+    // If user has already rated the receiver, prevent multiple ratings
+    const existingRating=await this.prisma.rating.findFirst({
+      where:{
+        giverId,
+        receiverId,
+      }
+    });
+
+    if(existingRating){
+      throw new BadRequestException('You have already rated this user');
+    }
+
+    // Create rating and update user rating count in transaction
+    const rating=await this.prisma.$transaction(async(tx)=>{
+      const newRating=await tx.rating.create({
+        data:{
+          giverId,
+          receiverId,
+          value,
+          comment,
+        },
+        include:{
+          receiver:{
+            select:{
+              id: true,
+              fullName:true,
+              positiveRating: true,
+              negativeRating: true,
+            }
+          }
+        }
+      })
+
+      // Update receiver's rating negative/positive
+      await tx.user.update({
+        where:{id: receiverId},
+        data:{
+          positiveRating: value===1?{increment:1}:undefined,
+          negativeRating: value===-1?{increment:1}:undefined,
+        }
+      })
+      return newRating;
+    });
+
+    return rating;     
   }
 }
