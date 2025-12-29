@@ -1057,4 +1057,142 @@ export class ProductsService {
         return { endTime: 'asc' };
     }
   }
+
+  /**
+   * Check if user has permission to rate/review this product
+   * User can rate if:
+   * - They are the SELLER and product is COMPLETED (can rate the winner/bidder)
+   * - They are the WINNER and product is COMPLETED (can rate the seller)
+   */
+  async checkReviewPermission(productId: string, userId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        sellerId: true,
+        winnerId: true,
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Fetch winner info separately
+    let winner: { id: string; fullName: string } | null = null;
+    if (product.winnerId) {
+      winner = await this.prisma.user.findUnique({
+        where: { id: product.winnerId },
+        select: {
+          id: true,
+          fullName: true,
+        },
+      });
+    }
+
+    const isSeller = product.sellerId === userId;
+    const isWinner = product.winnerId === userId;
+    const isCompleted = product.status === 'COMPLETED';
+
+    // Check if user already gave rating in this transaction
+    // For seller: check if they rated the winner
+    // For winner: check if they rated the seller
+    let existingRating: {
+      id: string;
+      createdAt: Date;
+      value: number;
+      comment: string | null;
+      giverId: string;
+      receiverId: string;
+    } | null = null;
+    if (isSeller && product.winnerId) {
+      existingRating = await this.prisma.rating.findFirst({
+        where: {
+          giverId: userId,
+          receiverId: product.winnerId,
+        },
+      });
+    } else if (isWinner) {
+      existingRating = await this.prisma.rating.findFirst({
+        where: {
+          giverId: userId,
+          receiverId: product.sellerId,
+        },
+      });
+    }
+
+    const hasAlreadyRated = !!existingRating;
+
+    // Determine permission
+    let canRate = false;
+    let reason = '';
+    let ratingTarget: 'SELLER' | 'BIDDER' | null = null;
+
+    if (!isCompleted) {
+      reason = 'Product auction must be completed before rating';
+    } else if (hasAlreadyRated) {
+      reason = 'You have already rated this transaction';
+    } else if (isSeller && product.winnerId) {
+      canRate = true;
+      reason = 'You can rate the winner (bidder) of this auction';
+      ratingTarget = 'BIDDER';
+    } else if (isWinner) {
+      canRate = true;
+      reason = 'You can rate the seller of this product';
+      ratingTarget = 'SELLER';
+    } else if (isSeller && !product.winnerId) {
+      reason = 'No winner for this auction yet';
+    } else {
+      reason = 'You are not involved in this transaction (not seller or winner)';
+    }
+
+    return {
+      canRate,
+      reason,
+      ratingTarget,
+      productInfo: {
+        id: product.id,
+        name: product.name,
+        status: product.status,
+      },
+      seller: product.seller,
+      winner,
+      hasAlreadyRated,
+      userRole: isSeller ? 'SELLER' : isWinner ? 'WINNER' : 'OBSERVER',
+    };
+  }
+
+  /**
+   * Admin update product status and winner
+   * Used to manually complete auctions or set winners
+   */
+  async adminUpdateProduct(id: string, adminUpdateDto: any): Promise<any> {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${id} not found`);
+    }
+
+    return this.prisma.product.update({
+      where: { id },
+      data: {
+        ...(adminUpdateDto.status && { status: adminUpdateDto.status }),
+        ...(adminUpdateDto.winnerId && { winnerId: adminUpdateDto.winnerId }),
+      },
+      include: {
+        category: true,
+        seller: { select: { id: true, fullName: true } },
+      },
+    });
+  }
 }

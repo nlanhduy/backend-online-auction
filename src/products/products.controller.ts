@@ -21,6 +21,7 @@ import { Product, UserRole } from '@prisma/client';
 
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import {
   DescriptionHistoryDto,
@@ -95,6 +96,25 @@ export class ProductsController {
     return await this.productsService.getDescriptionHistory(id);
   }
 
+  @ApiBearerAuth('access-token')
+  @Get(':productId/review-permission')
+  @ApiOperation({
+    summary: 'Check if user can rate/review the product',
+    description:
+      'Returns permission status and reason. User can rate if they are the seller (rate winner) or winner (rate seller) of a completed product',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Permission check successful',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Product not found',
+  })
+  async checkReviewPermission(@Param('productId') productId: string, @CurrentUser() user: any) {
+    return this.productsService.checkReviewPermission(productId, user.id);
+  }
+
   // ==================== Protected Routes (SELLER/ADMIN) ====================
 
   @Post()
@@ -154,6 +174,8 @@ export class ProductsController {
   findAll(@Query() getUserProductDto: GetUserProductDto) {
     return this.productsService.findAll({ getUserProductDto });
   }
+
+  // ==================== Description History CRUD ====================
 
   @Public()
   @Get('description-history/:historyId')

@@ -22,6 +22,7 @@ import {
   ApiBody,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -39,6 +40,7 @@ import { GetUserProductDto } from './dto/get-user-product.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './user.service';
+import { CreateRatingDto } from './dto/create-rating.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -207,6 +209,13 @@ export class UsersController {
     return this.usersService.verifyAndResetPassword(dto);
   }
 
+  @Get('me/ratings/details')
+  @ApiOperation({ summary: 'Get detailed ratings for current user' })
+  @ApiResponse({ status: 200, description: 'Detailed ratings retrieved successfully' })
+  getCurrentUserDetailedRatings(@CurrentUser() user: any) {
+    return this.usersService.getUserRatingDetails(user.id);
+  }
+
   // ==================== Seller Upgrade Routes ====================
 
   @Post('seller-upgrade/request')
@@ -292,6 +301,60 @@ export class UsersController {
   getUserSellerStatus(@Param('id') id: string) {
     return this.usersService.getSellerExpirationStatus(id);
   }
+  // ==================== Bidder Routes ====================
+  @Get('me/active-bids')
+  @ApiOperation({summary:'Get products I am currently bidding on'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  getMyActiveBids(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyActiveBids(user.id, page, limit);
+  }
+
+  @Get('me/won-auctions')
+  @ApiOperation({summary:'Get products I have won from auctions'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  getMyWonAuctions(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyWonProducts(user.id, page, limit);
+  }
+
+  @Get('me/given-ratings')
+  @ApiOperation({summary:'Get ratings I have given to others'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiResponse({ status: 200, description: 'Ratings given retrieved successfully' })
+  getMyGivenRatings(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyGivenRatings(user.id, page, limit);
+  }
+
+  @Post('ratings')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Rate a user (+1 or -1) with optional comment. BIDDER can rate SELLER after winning, SELLER can rate BIDDER after selling' })
+  @ApiBody({ type: CreateRatingDto })
+  @ApiResponse({ status: 201, description: 'Rating created successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot rate yourself / Invalid rating relationship / Must have transaction first' })
+  @ApiResponse({ status: 409, description: 'Already rated this user' })
+  createRating(
+    @CurrentUser() user: any,
+    @Body() dto: CreateRatingDto,
+  ) {
+    return this.usersService.createRating(user.id, dto);
+  }
+
+  // ==================== Seller Routes ====================
+
+  @Get('me/completed-sales')
+  @Roles(UserRole.SELLER)
+  @ApiOperation({summary:'Get products I have sold with winners (SELLER only)'})
+  @ApiQuery({name: 'page', required:false, type:Number})
+  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiResponse({ status: 200, description: 'Completed sales retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Only sellers can access this endpoint' })
+  getMyCompletedSales(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.getMyCompletedSales(user.id, page, limit);
+  }
+
+
 
   // ==================== Admin Routes ====================
 
