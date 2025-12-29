@@ -1123,4 +1123,88 @@ export class ProductsService {
       },
     });
   }
+
+  async findRelatedProducts(productId: string, limit: number = 5) {
+    const currentProduct = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { 
+        categoryId: true, 
+        id: true,
+      },
+    });
+
+    if (!currentProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Bước 1: Lấy sản phẩm cùng category
+    let relatedProducts = await this.prisma.product.findMany({
+      where: {
+        categoryId: currentProduct.categoryId,
+        id: { not: productId },
+        status: 'ACTIVE',
+      },
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        seller: { select: { id: true, fullName: true } },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+    });
+
+    // Bước 2: Nếu không đủ, lấy thêm từ parent category
+    if (relatedProducts.length < limit) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: currentProduct.categoryId },
+        select: { parentId: true },
+      });
+
+      if (category?.parentId) {
+        const remaining = limit - relatedProducts.length;
+        const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+
+        const parentCategoryProducts = await this.prisma.product.findMany({
+          where: {
+            categoryId: category.parentId,
+            id: { notIn: excludeIds },
+            status: 'ACTIVE',
+          },
+          take: remaining,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            seller: { select: { id: true, fullName: true } },
+            category: true,
+            _count: { select: { bids: true } },
+          },
+        });
+
+        relatedProducts = [...relatedProducts, ...parentCategoryProducts];
+      }
+    }
+
+    // Bước 3: Nếu vẫn không đủ, lấy từ tất cả categories
+    if (relatedProducts.length < limit) {
+      const remaining = limit - relatedProducts.length;
+      const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+
+      const otherProducts = await this.prisma.product.findMany({
+        where: {
+          id: { notIn: excludeIds },
+          status: 'ACTIVE',
+        },
+        take: remaining,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          seller: { select: { id: true, fullName: true } },
+          category: true,
+          _count: { select: { bids: true } },
+        },
+      });
+
+      relatedProducts = [...relatedProducts, ...otherProducts];
+    }
+
+    return relatedProducts;
+  }
 }

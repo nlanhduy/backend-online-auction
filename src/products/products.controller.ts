@@ -115,6 +115,17 @@ export class ProductsController {
     return this.productsService.checkReviewPermission(productId, user.id);
   }
 
+  @Public()
+  @Get(':id/related')
+  @ApiOperation({ 
+    summary: 'Get related products by category (Public)',
+    description: 'Fetch products related to the given product based on category'})
+  @ApiResponse({status: 200, description: 'Related products retrieved successfully'})
+  async getRelatedProducts(
+    @Param('id') id: string
+  ): Promise<Product[]> {
+    return this.productsService.findRelatedProducts(id);
+  }
   // ==================== Protected Routes (SELLER/ADMIN) ====================
 
   @Post()
