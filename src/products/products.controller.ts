@@ -66,11 +66,71 @@ export class ProductsController {
 
   @Public()
   @Get(':id')
-  @ApiOperation({ summary: 'Get product details by ID (Public)' })
-  @ApiResponse({ status: 200, description: 'Product found' })
+  @ApiOperation({ 
+    summary: 'Get product details by ID (Public)',
+    description: 'Smart multi-purpose endpoint that adapts response based on product status and user role:\n\n' +
+    'ACTIVE Product (Auction in progress):\n' +
+    '  → Returns normal product details for everyone\n\n' +
+    'COMPLETED Product (Auction ended):\n' +
+    '  → Buyer/Seller (authenticated): Returns full order info including shipping, tracking, payment status. Frontend shows Order Management UI\n' +
+    '  → Other users: Returns basic info with "Auction ended" message. Hides sensitive order details\n\n' +
+    'Response includes:\n' +
+    '  • viewType: "ORDER_FULFILLMENT" | "AUCTION_ENDED" | undefined\n' +
+    '  • order: Full order object (only for buyer/seller on completed products)\n\n' +
+    'Frontend usage: Check viewType to determine which UI to render (Product Detail vs Order Management vs Ended Message)'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Product found - Response varies based on status and user role',
+    schema: {
+      oneOf: [
+        {
+          description: 'Active product - Normal product details',
+          example: {
+            id: 'prod-123',
+            name: 'iPhone 15 Pro Max',
+            currentPrice: 27500000,
+            description: { content: 'Brand new...', createdAt: '2025-12-30T10:00:00Z' },
+            status: 'ACTIVE',
+            seller: { id: 'seller-id', fullName: 'Tran Thi B' }
+          }
+        },
+        {
+          description: 'Completed product - Buyer/Seller view with ORDER INFO',
+          example: {
+            id: 'prod-123',
+            name: 'iPhone 15 Pro Max',
+            currentPrice: 27500000,
+            status: 'COMPLETED',
+            viewType: 'ORDER_FULFILLMENT',
+            order: {
+              id: 'order-uuid',
+              status: 'IN_TRANSIT',
+              trackingNumber: 'VN123456789',
+              shippingAddress: '123 Nguyen Van Linh',
+              paymentStatus: 'COMPLETED',
+              buyer: { id: 'buyer-id', fullName: 'Nguyen Van A' },
+              seller: { id: 'seller-id', fullName: 'Tran Thi B' }
+            }
+          }
+        },
+        {
+          description: 'Completed product - Other users view (limited info)',
+          example: {
+            id: 'prod-123',
+            name: 'iPhone 15 Pro Max',
+            currentPrice: 27500000,
+            status: 'COMPLETED',
+            viewType: 'AUCTION_ENDED',
+            message: 'Sản phẩm đã kết thúc'
+          }
+        }
+      ]
+    }
+  })
   @ApiResponse({ status: 404, description: 'Product not found' })
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user?: any) {
+    return this.productsService.findOne(id, user?.id);
   }
 
   @Public()
@@ -97,12 +157,42 @@ export class ProductsController {
   @ApiBearerAuth('access-token')
   @Get(':productId/review-permission')
   @ApiOperation({ 
-    summary: 'Check if user can rate/review the product',
-    description: 'Returns permission status and reason. User can rate if they are the seller (rate winner) or winner (rate seller) of a completed product'
+    summary: 'Check review permission & order fulfillment status',
+    description: 'Multi-purpose endpoint for product post-auction status:\n\n' +
+    '1. Rating Permission: Check if user can rate (seller rate winner, winner rate seller)\n' +
+    '2. Order Status: Returns order fulfillment status to determine UI redirect\n\n' +
+    'Use Cases:\n' +
+    '  → Product detail page: Check if should show "Rate" button\n' +
+    '  → Navigation: Determine if redirect to Order Fulfillment page needed\n' +
+    '  → Order tracking: Get current order status (SHIPPING_INFO_PENDING, IN_TRANSIT, etc.)\n\n' +
+    'Response Fields:\n' +
+    '  • canRate: Can user submit rating?\n' +
+    '  • hasOrder: Is there an order created?\n' +
+    '  • orderStatus: Current order status (if exists)\n' +
+    '  • needsAction: Does order need user action? (e.g. buyer submit shipping, seller confirm)\n' +
+    '  • redirectToOrderPage: Should UI redirect to order fulfillment?'
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'Permission check successful'
+    description: 'Permission and order status retrieved successfully',
+    schema: {
+      example: {
+        canRate: true,
+        reason: 'You can rate the winner (bidder) of this auction',
+        ratingTarget: 'BIDDER',
+        hasAlreadyRated: false,
+        userRole: 'SELLER',
+        productInfo: { id: 'prod-123', name: 'iPhone 15', status: 'COMPLETED' },
+        order: {
+          hasOrder: true,
+          orderId: 'order-uuid',
+          orderStatus: 'SHIPPING_INFO_PENDING',
+          needsAction: true,
+          actionRequired: 'Buyer needs to submit shipping address',
+          redirectToOrderPage: true
+        }
+      }
+    }
   })
   @ApiResponse({ 
     status: 404, 
