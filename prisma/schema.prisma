@@ -9,28 +9,31 @@ datasource db {
 }
 
 model User {
-  id                    String                 @id @default(uuid())
-  email                 String                 @unique
-  password              String
-  fullName              String
-  role                  UserRole               @default(BIDDER)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  dateOfBirth           DateTime?
-  negativeRating        Int                    @default(0)
-  positiveRating        Int                    @default(0)
-  address               String
-  avatar                String?
-  sellerExpiration      DateTime?
-  bids                  Bid[]
-  favoriteProducts      FavoriteProduct[]
-  products              Product[]
-  questions             Question[]
-  ratingsGiven          Rating[]               @relation("RatingGiver")
-  ratingsReceived       Rating[]               @relation("RatingReceiver")
-  refreshTokens         RefreshToken[]
-  upgradeRequests       SellerUpgradeRequest[]
-  systemSettingsUpdated SystemSettings[]
+  id                         String                 @id @default(uuid())
+  email                      String                 @unique
+  password                   String
+  fullName                   String
+  role                       UserRole               @default(BIDDER)
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  dateOfBirth                DateTime?
+  negativeRating             Int                    @default(0)
+  positiveRating             Int                    @default(0)
+  address                    String
+  avatar                     String?
+  sellerExpiration           DateTime?
+  paypalEmail                String?
+  bids                       Bid[]
+  favoriteProducts           FavoriteProduct[]
+  Order_Order_buyerIdToUser  Order[]                @relation("Order_buyerIdToUser")
+  Order_Order_sellerIdToUser Order[]                @relation("Order_sellerIdToUser")
+  products                   Product[]
+  questions                  Question[]
+  ratingsGiven               Rating[]               @relation("RatingGiver")
+  ratingsReceived            Rating[]               @relation("RatingReceiver")
+  refreshTokens              RefreshToken[]
+  upgradeRequests            SellerUpgradeRequest[]
+  systemSettingsUpdated      SystemSettings[]
 }
 
 model RefreshToken {
@@ -93,6 +96,7 @@ model Product {
   allowNewBidders      Boolean                  @default(true)
   bids                 Bid[]
   favoriteBy           FavoriteProduct[]
+  Order                Order[]
   category             Category                 @relation(fields: [categoryId], references: [id])
   seller               User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   questions            Question[]
@@ -145,14 +149,16 @@ model FavoriteProduct {
 }
 
 model Rating {
-  id         String   @id @default(uuid())
-  value      Int
-  comment    String?
-  createdAt  DateTime @default(now())
-  giverId    String
-  receiverId String
-  giver      User     @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
-  receiver   User     @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  id                                 String   @id @default(uuid())
+  value                              Int
+  comment                            String?
+  createdAt                          DateTime @default(now())
+  giverId                            String
+  receiverId                         String
+  Order_Order_buyerRatingIdToRating  Order?   @relation("Order_buyerRatingIdToRating")
+  Order_Order_sellerRatingIdToRating Order?   @relation("Order_sellerRatingIdToRating")
+  giver                              User     @relation("RatingGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiver                           User     @relation("RatingReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@index([giverId])
   @@index([receiverId])
@@ -179,15 +185,64 @@ model Question {
 
 model DescriptionHistory {
   id          String   @id @default(uuid())
-  description String   @db.Text
+  description String
   createdAt   DateTime @default(now())
   productId   String
-  createdBy   String? // Optional: track who made the change
+  createdBy   String?
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([createdAt])
   @@map("description_history")
+}
+
+model Order {
+  id                                  String        @id
+  productId                           String
+  buyerId                             String
+  sellerId                            String
+  status                              OrderStatus   @default(PAYMENT_PENDING)
+  paymentStatus                       PaymentStatus @default(PENDING)
+  paymentAmount                       Float?
+  paypalOrderId                       String?
+  paypalTransactionId                 String?
+  paidAt                              DateTime?
+  platformFee                         Float?
+  sellerAmount                        Float?
+  sellerPaypalEmail                   String?
+  payoutStatus                        PayoutStatus  @default(PENDING)
+  payoutBatchId                       String?
+  payoutItemId                        String?
+  paidToSellerAt                      DateTime?
+  shippingAddress                     String?
+  shippingCity                        String?
+  shippingDistrict                    String?
+  shippingPhone                       String?
+  shippingNote                        String?
+  shippingSubmittedAt                 DateTime?
+  sellerConfirmedAt                   DateTime?
+  trackingNumber                      String?
+  shippingCarrier                     String?
+  shippedAt                           DateTime?
+  buyerConfirmedAt                    DateTime?
+  receivedAt                          DateTime?
+  isCancelled                         Boolean       @default(false)
+  cancelledAt                         DateTime?
+  cancelledBy                         String?
+  cancellationReason                  String?
+  buyerRatingId                       String?       @unique
+  sellerRatingId                      String?       @unique
+  createdAt                           DateTime      @default(now())
+  updatedAt                           DateTime
+  User_Order_buyerIdToUser            User          @relation("Order_buyerIdToUser", fields: [buyerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Rating_Order_buyerRatingIdToRating  Rating?       @relation("Order_buyerRatingIdToRating", fields: [buyerRatingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Product                             Product       @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  User_Order_sellerIdToUser           User          @relation("Order_sellerIdToUser", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Rating_Order_sellerRatingIdToRating Rating?       @relation("Order_sellerRatingIdToRating", fields: [sellerRatingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
 }
 
 enum UserRole {
@@ -208,4 +263,29 @@ enum ProductStatus {
   ACTIVE
   COMPLETED
   CANCELED
+}
+
+enum OrderStatus {
+  PAYMENT_PENDING
+  SHIPPING_INFO_PENDING
+  SELLER_CONFIRMATION_PENDING
+  IN_TRANSIT
+  BUYER_CONFIRMATION_PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
 }

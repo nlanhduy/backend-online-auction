@@ -20,6 +20,8 @@ import { UsersModule } from './user/user.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SystemSettingsModule } from './system-setting/system-settings.module';
 import { BidsModule } from './bids/bids.module';
+import { PaymentModule } from './payment/payment.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { BidsModule } from './bids/bids.module';
     ScheduleModule.forRoot(),
     SystemSettingsModule,
     BidsModule,
+    PaymentModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [

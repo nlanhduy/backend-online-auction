@@ -166,7 +166,7 @@ export class ProductsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
       include: {
@@ -181,6 +181,14 @@ export class ProductsService {
             createdBy: true,
           },
         },
+        order: userId ? {
+          include: {
+            buyer: { select: { id: true, fullName: true, email: true, avatar: true } },
+            seller: { select: { id: true, fullName: true, email: true, avatar: true } },
+            buyerRating: true,
+            sellerRating: true,
+          },
+        } : false,
       },
     });
 
@@ -192,10 +200,9 @@ export class ProductsService {
     const latestHistory = product.descriptionHistories[0];
 
     // Destructure để bỏ descriptionHistory array cũ và description gốc
-    const { descriptionHistory, descriptionHistories, description, ...productData } = product;
+    const { descriptionHistory, descriptionHistories, description, order, ...productData } = product;
 
-    // Trả về format mới với description là object
-    return {
+    const result = {
       ...productData,
       descriptionHistories,
       description: {
@@ -203,6 +210,31 @@ export class ProductsService {
         createdAt: latestHistory?.createdAt,
         createdBy: latestHistory?.createdBy,
       },
+    };
+
+    // Nếu sản phẩm đã kết thúc (COMPLETED/CANCELED)
+    if (product.status !== 'ACTIVE') {
+      // Nếu có order và user là buyer hoặc seller -> trả về order info
+      if (order && userId && (order.buyerId === userId || order.sellerId === userId)) {
+        return {
+          ...result,
+          order: order,
+          viewType: 'ORDER_FULFILLMENT', // Frontend dùng để hiển thị view phù hợp
+        };
+      }
+      
+      // Người dùng khác chỉ thấy thông báo đã kết thúc
+      return {
+        ...result,
+        viewType: 'AUCTION_ENDED',
+        message: 'Sản phẩm đã kết thúc',
+      };
+    }
+
+    // Sản phẩm đang active thì trả về bình thường
+    return {
+      ...result,
+      viewType: 'ACTIVE_AUCTION',
     };
   }
 
@@ -1079,6 +1111,17 @@ export class ProductsService {
             fullName: true,
           },
         },
+        order: {
+          select: {
+            id: true,
+            status: true,
+            paymentStatus: true,
+            shippingSubmittedAt: true,
+            sellerConfirmedAt: true,
+            buyerConfirmedAt: true,
+            isCancelled: true,
+          },
+        },
       },
     });
 
@@ -1105,19 +1148,20 @@ export class ProductsService {
     // Check if user already gave rating in this transaction
     // For seller: check if they rated the winner
     // For winner: check if they rated the seller
-    let existingRating: {
-      id: string;
-      createdAt: Date;
-      value: number;
-      comment: string | null;
-      giverId: string;
-      receiverId: string;
-    } | null = null;
+    let existingRating: { id: string; createdAt: Date; value: number; comment: string | null; giverId: string; receiverId: string; } | null = null;
     if (isSeller && product.winnerId) {
       existingRating = await this.prisma.rating.findFirst({
         where: {
           giverId: userId,
           receiverId: product.winnerId,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          value: true,
+          comment: true,
+          giverId: true,
+          receiverId: true,
         },
       });
     } else if (isWinner) {
@@ -1125,6 +1169,14 @@ export class ProductsService {
         where: {
           giverId: userId,
           receiverId: product.sellerId,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          value: true,
+          comment: true,
+          giverId: true,
+          receiverId: true,
         },
       });
     }
@@ -1154,6 +1206,9 @@ export class ProductsService {
       reason = 'You are not involved in this transaction (not seller or winner)';
     }
 
+    // Analyze order status and determine required actions
+    const orderInfo = this.analyzeOrderStatus(product.order, isSeller, isWinner);
+
     return {
       canRate,
       reason,
@@ -1167,6 +1222,95 @@ export class ProductsService {
       winner,
       hasAlreadyRated,
       userRole: isSeller ? 'SELLER' : isWinner ? 'WINNER' : 'OBSERVER',
+      order: orderInfo,
+    };
+  }
+
+  /**
+   * Analyze order status and determine UI actions
+   */
+  private analyzeOrderStatus(
+    order: any,
+    isSeller: boolean,
+    isWinner: boolean,
+  ): {
+    hasOrder: boolean;
+    orderId?: string;
+    orderStatus?: string;
+    needsAction: boolean;
+    actionRequired?: string;
+    redirectToOrderPage: boolean;
+  } {
+    if (!order) {
+      return {
+        hasOrder: false,
+        needsAction: false,
+        redirectToOrderPage: false,
+      };
+    }
+
+    if (order.isCancelled) {
+      return {
+        hasOrder: true,
+        orderId: order.id,
+        orderStatus: 'CANCELLED',
+        needsAction: false,
+        actionRequired: 'Order has been cancelled',
+        redirectToOrderPage: false,
+      };
+    }
+
+    let needsAction = false;
+    let actionRequired = '';
+
+    // Check based on order status
+    switch (order.status) {
+      case 'SHIPPING_INFO_PENDING':
+        if (isWinner) {
+          needsAction = true;
+          actionRequired = 'You need to submit shipping address';
+        } else if (isSeller) {
+          actionRequired = 'Waiting for buyer to submit shipping address';
+        }
+        break;
+
+      case 'SELLER_CONFIRMATION_PENDING':
+        if (isSeller) {
+          needsAction = true;
+          actionRequired = 'You need to confirm payment received and provide tracking number';
+        } else if (isWinner) {
+          actionRequired = 'Waiting for seller to confirm and ship';
+        }
+        break;
+
+      case 'IN_TRANSIT':
+        if (isWinner) {
+          needsAction = true;
+          actionRequired = 'Confirm when you receive the item';
+        } else if (isSeller) {
+          actionRequired = 'Waiting for buyer to confirm receipt';
+        }
+        break;
+
+      case 'COMPLETED':
+        actionRequired = 'Order completed successfully';
+        needsAction = false;
+        break;
+
+      default:
+        actionRequired = 'Unknown order status';
+    }
+
+    // Should redirect to order page if order exists and not completed
+    const redirectToOrderPage = order.status !== 'COMPLETED' && !order.isCancelled;
+
+    return {
+      hasOrder: true,
+      orderId: order.id,
+      orderStatus: order.status,
+      needsAction,
+      actionRequired,
+      redirectToOrderPage,
     };
   }
 
