@@ -36,6 +36,7 @@ import { ChangeNameDto } from './dto/change-name.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ForgotPasswordRequestDto, ForgotPasswordVerifyDto } from './dto/forget-password.dto';
+import { GetUserProductDto } from './dto/get-user-product.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './user.service';
@@ -48,7 +49,6 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // ==================== Current User Routes ====================
-
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
@@ -67,6 +67,14 @@ export class UsersController {
       throw new ForbiddenException('Cannot update own role');
     }
     return this.usersService.update(user.id, updateUserDto);
+  }
+
+  //Get my products
+  @Get('me/products')
+  @ApiOperation({ summary: 'Get current user products' })
+  @ApiResponse({ status: 200, description: 'Products retrieved successfully' })
+  getCurrentUserProducts(@CurrentUser() user: any, @Query() getUserProductDto: GetUserProductDto) {
+    return this.usersService.getAllUserProducts(user.id, getUserProductDto);
   }
 
   @Get('me/rating')
@@ -434,6 +442,4 @@ export class UsersController {
   async triggerCheckExpiredSellers() {
     return this.usersService.checkExpiredSellers();
   }
-
-
 }

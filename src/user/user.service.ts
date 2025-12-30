@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 /* eslint-disable prettier/prettier */
@@ -24,6 +27,7 @@ import { ChangeNameDto } from './dto/change-name.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ForgotPasswordRequestDto, ForgotPasswordVerifyDto } from './dto/forget-password.dto';
+import { GetUserProductDto } from './dto/get-user-product.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
@@ -84,6 +88,82 @@ export class UsersService {
       },
     });
     return users;
+  }
+
+  async getAllUserProducts(userId: string, getUserProductDto: GetUserProductDto) {
+    const { page = 1, limit = 10 } = getUserProductDto;
+
+    const skip = (page - 1) * limit;
+    const now = new Date();
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where: { sellerId: userId },
+        skip,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          category: true,
+
+          bids: {
+            where: { rejected: false },
+            orderBy: { amount: 'desc' },
+            take: 1,
+            select: {
+              amount: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+
+          _count: {
+            select: {
+              bids: {
+                where: { rejected: false },
+              },
+            },
+          },
+        },
+      }),
+
+      this.prisma.product.count({
+        where: { sellerId: userId },
+      }),
+    ]);
+
+    const transformProduct = (product: any) => ({
+      id: product.id,
+      name: product.name,
+      mainImage: product.mainImage,
+      currentPrice: product.currentPrice,
+      buyNowPrice: product.buyNowPrice,
+      createdAt: product.createdAt,
+      endTime: product.endTime,
+      timeRemaining: product.endTime.getTime() - now.getTime(),
+      totalBids: product._count.bids,
+      highestBidder: product.bids[0]?.user || null,
+      category: product.category,
+    });
+
+    const mappedItems = items.map(transformProduct);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items: mappedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrevious: page > 1,
+    };
   }
 
   async findOne(id: string) {

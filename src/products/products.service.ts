@@ -1,5 +1,5 @@
-import { SystemSettingsService } from './../system-setting/system-settings.service';
 import { retry, take } from 'rxjs';
+import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
 import {
   BadRequestException,
@@ -9,55 +9,67 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemSettingsService } from '../system-setting/system-settings.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import {
+  DescriptionHistoryDto,
+  DescriptionHistoryResponseDto,
+} from './dto/description-history.dto';
 import { SearchProductDto, SearchType, SortBy } from './dto/search-product.dto';
 import { ProductItemDto, SearchResponseDto } from './dto/search-response.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { DescriptionHistoryResponseDto, DescriptionHistoryDto } from './dto/description-history.dto';
 import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService, private systemSettingsService: SystemSettingsService ) {}
-  async create(createProductDto: CreateProductDto, sellerId: string){
-    const settings=await this.systemSettingsService.getSettings();
+  constructor(
+    private prisma: PrismaService,
+    private systemSettingsService: SystemSettingsService,
+  ) {}
+  async create(createProductDto: CreateProductDto, sellerId: string) {
+    const settings = await this.systemSettingsService.getSettings();
 
-    if(createProductDto.images.length < settings.minImages){
+    if (createProductDto.images.length < settings.minImages) {
       throw new BadRequestException(`At least ${settings.minImages} product images are required`);
     }
 
-    if(createProductDto.buyNowPrice&&createProductDto.buyNowPrice<=createProductDto.initialPrice){
+    if (
+      createProductDto.buyNowPrice &&
+      createProductDto.buyNowPrice <= createProductDto.initialPrice
+    ) {
       throw new BadRequestException(`Buy Now price must be greater than starting price`);
     }
 
-    const startTime=new Date(createProductDto.startTime);
-    const endTime=new Date(createProductDto.endTime);
-    if(startTime>=endTime){
+    const startTime = new Date(createProductDto.startTime);
+    const endTime = new Date(createProductDto.endTime);
+    if (startTime >= endTime) {
       throw new BadRequestException(`End time must be after start time`);
     }
 
-    if(startTime<=new Date()){
+    if (startTime <= new Date()) {
       throw new BadRequestException(`Start time must be in the future`);
     }
 
-    if(createProductDto.priceStep>createProductDto.initialPrice*0.5){
-      throw new BadRequestException(`Price step must not be greater than 50% of the starting price`);
+    if (createProductDto.priceStep > createProductDto.initialPrice * 0.5) {
+      throw new BadRequestException(
+        `Price step must not be greater than 50% of the starting price`,
+      );
     }
 
     // Sử dụng transaction để tạo product và description history cùng lúc
     return this.prisma.$transaction(async (tx) => {
       // 1. Tạo product
       const product = await tx.product.create({
-        data:{
+        data: {
           ...createProductDto,
           sellerId,
           currentPrice: createProductDto.initialPrice,
           descriptionHistory: [createProductDto.description],
-          originalEndTime: createProductDto.autoExtend? endTime : null,
+          originalEndTime: createProductDto.autoExtend ? endTime : null,
           startTime,
           endTime,
         },
-        include:{
+        include: {
           category: true,
           seller: { select: { id: true, fullName: true } },
         },
@@ -74,20 +86,84 @@ export class ProductsService {
 
       return product;
     });
-
-
-    
-
   }
 
+  async findAll({ getUserProductDto }: { getUserProductDto: GetUserProductDto }) {
+    const { page = 1, limit = 10 } = getUserProductDto;
+    const skip = (page - 1) * limit;
+    const now = new Date();
 
-  findAll() {
-    return this.prisma.product.findMany({
-      include: {
-        category: true,
-        seller: { select: { id: true, fullName: true } },
-      },
-    });
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        skip,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          category: true,
+
+          seller: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+
+          bids: {
+            where: { rejected: false },
+            orderBy: { amount: 'desc' },
+            take: 1,
+            select: {
+              amount: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+
+          _count: {
+            select: {
+              bids: {
+                where: { rejected: false },
+              },
+            },
+          },
+        },
+      }),
+
+      this.prisma.product.count(),
+    ]);
+
+    const mappedItems = items.map((product) => ({
+      id: product.id,
+      name: product.name,
+      mainImage: product.mainImage,
+      currentPrice: product.currentPrice,
+      buyNowPrice: product.buyNowPrice,
+      createdAt: product.createdAt,
+      endTime: product.endTime,
+      timeRemaining: product.endTime.getTime() - now.getTime(),
+      totalBids: product._count.bids,
+      highestBidder: product.bids[0]?.user || null,
+      category: product.category,
+      seller: product.seller,
+    }));
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items: mappedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrevious: page > 1,
+    };
   }
 
   async findOne(id: string, userId?: string) {
@@ -122,7 +198,7 @@ export class ProductsService {
 
     // Lấy description mới nhất từ history
     const latestHistory = product.descriptionHistories[0];
-    
+
     // Destructure để bỏ descriptionHistory array cũ và description gốc
     const { descriptionHistory, descriptionHistories, description, order, ...productData } = product;
 
@@ -183,47 +259,42 @@ export class ProductsService {
   //     },
   //   });
   // }
-  async update(id:string, updateProductDto: UpdateProductDto, userId: string, userRole: string){
-    const existingProduct=await this.prisma.product.findUnique({
-      where:{id},
+  async update(id: string, updateProductDto: UpdateProductDto, userId: string, userRole: string) {
+    const existingProduct = await this.prisma.product.findUnique({
+      where: { id },
       select: {
         id: true,
         description: true,
         currentPrice: true,
         sellerId: true,
-      }
+      },
     });
-    
-    if(!existingProduct){
+
+    if (!existingProduct) {
       throw new NotFoundException(`Product with id: ${id} does not exist`);
     }
 
-    if(userRole !== 'ADMIN' && existingProduct.sellerId !== userId){
+    if (userRole !== 'ADMIN' && existingProduct.sellerId !== userId) {
       throw new ForbiddenException(`You are not allowed to update this product`);
     }
 
     if (updateProductDto.images) {
       const settings = await this.systemSettingsService.getSettings();
       if (updateProductDto.images.length < settings.minImages) {
-        throw new BadRequestException(
-          `Need at least ${settings.minImages} product images`,
-        );
+        throw new BadRequestException(`Need at least ${settings.minImages} product images`);
       }
     }
 
     if (updateProductDto.buyNowPrice) {
-      const priceToCompare =
-        updateProductDto.initialPrice || existingProduct.currentPrice;
+      const priceToCompare = updateProductDto.initialPrice || existingProduct.currentPrice;
       if (updateProductDto.buyNowPrice <= priceToCompare) {
-        throw new BadRequestException(
-          'Buy now price must be greater than the current price',
-        );
+        throw new BadRequestException('Buy now price must be greater than the current price');
       }
     }
 
     // Kiểm tra xem description có thay đổi không
-    const isDescriptionChanged = updateProductDto.description && 
-      updateProductDto.description !== existingProduct.description;
+    const isDescriptionChanged =
+      updateProductDto.description && updateProductDto.description !== existingProduct.description;
 
     // Sử dụng transaction để update product và tạo history
     return this.prisma.$transaction(async (tx) => {
@@ -257,9 +328,7 @@ export class ProductsService {
     });
   }
 
-  async getDescriptionHistory(
-    productId: string
-  ): Promise<DescriptionHistoryResponseDto> {
+  async getDescriptionHistory(productId: string): Promise<DescriptionHistoryResponseDto> {
     // Kiểm tra product có tồn tại không
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -288,7 +357,7 @@ export class ProductsService {
     return {
       productId: product.id,
       currentDescription: product.description,
-      history: historyRecords.map(record => ({
+      history: historyRecords.map((record) => ({
         id: record.id,
         description: record.description,
         createdAt: record.createdAt,
@@ -340,7 +409,7 @@ export class ProductsService {
       where: { id: historyId },
       include: {
         product: {
-          select: { 
+          select: {
             id: true,
             sellerId: true,
             description: true,
@@ -359,9 +428,7 @@ export class ProductsService {
     const isSeller = history.product.sellerId === userId;
 
     if (!isAdmin && !isCreator && !isSeller) {
-      throw new ForbiddenException(
-        'You do not have permission to update this description history',
-      );
+      throw new ForbiddenException('You do not have permission to update this description history');
     }
 
     // Kiểm tra xem đây có phải là entry mới nhất không
@@ -421,9 +488,9 @@ export class ProductsService {
       where: { id: historyId },
       include: {
         product: {
-          select: { 
+          select: {
             id: true,
-            sellerId: true 
+            sellerId: true,
           },
         },
       },
@@ -438,9 +505,7 @@ export class ProductsService {
     const isSeller = history.product.sellerId === userId;
 
     if (!isAdmin && !isSeller) {
-      throw new ForbiddenException(
-        'You do not have permission to delete this description history',
-      );
+      throw new ForbiddenException('You do not have permission to delete this description history');
     }
 
     // Check if this is the only history entry for the product
@@ -580,8 +645,11 @@ export class ProductsService {
     } = searchProductDto;
 
     // Check if FTS is available and query is provided
-    const useFTS = query && query.trim() !== '' && (searchType === SearchType.NAME || searchType === SearchType.BOTH);
-    
+    const useFTS =
+      query &&
+      query.trim() !== '' &&
+      (searchType === SearchType.NAME || searchType === SearchType.BOTH);
+
     if (useFTS) {
       const ftsAvailable = await this.checkFTSAvailability();
       if (ftsAvailable) {
@@ -589,7 +657,7 @@ export class ProductsService {
         return this.fullTextSearch(searchProductDto);
       }
     }
-    
+
     console.log('📝 Using Traditional LIKE Search');
     return this.traditionalSearch(searchProductDto);
   }
@@ -772,7 +840,7 @@ export class ProductsService {
     };
   }
 
-    private async fullTextSearch(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
+  private async fullTextSearch(searchProductDto: SearchProductDto): Promise<SearchResponseDto> {
     const {
       page = 1,
       limit = 10,
@@ -797,10 +865,7 @@ export class ProductsService {
     console.log('📊 FTS Query:', { query, tsquery, now: now.toISOString() });
 
     // Build WHERE conditions
-    const conditions: string[] = [
-      `p.status = 'ACTIVE'`,
-      `p."endTime" > $1`,
-    ];
+    const conditions: string[] = [`p.status = 'ACTIVE'`, `p."endTime" > $1`];
 
     const params: any[] = [now];
     let paramIndex = 2;
@@ -955,7 +1020,7 @@ export class ProductsService {
           },
         });
 
-        if(!fullProduct){
+        if (!fullProduct) {
           return null;
         }
         const productItem: ProductItemDto = {
@@ -1273,5 +1338,89 @@ export class ProductsService {
         seller: { select: { id: true, fullName: true } },
       },
     });
+  }
+
+  async findRelatedProducts(productId: string, limit: number = 5) {
+    const currentProduct = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { 
+        categoryId: true, 
+        id: true,
+      },
+    });
+
+    if (!currentProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Bước 1: Lấy sản phẩm cùng category
+    let relatedProducts = await this.prisma.product.findMany({
+      where: {
+        categoryId: currentProduct.categoryId,
+        id: { not: productId },
+        status: 'ACTIVE',
+      },
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        seller: { select: { id: true, fullName: true } },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+    });
+
+    // Bước 2: Nếu không đủ, lấy thêm từ parent category
+    if (relatedProducts.length < limit) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: currentProduct.categoryId },
+        select: { parentId: true },
+      });
+
+      if (category?.parentId) {
+        const remaining = limit - relatedProducts.length;
+        const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+
+        const parentCategoryProducts = await this.prisma.product.findMany({
+          where: {
+            categoryId: category.parentId,
+            id: { notIn: excludeIds },
+            status: 'ACTIVE',
+          },
+          take: remaining,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            seller: { select: { id: true, fullName: true } },
+            category: true,
+            _count: { select: { bids: true } },
+          },
+        });
+
+        relatedProducts = [...relatedProducts, ...parentCategoryProducts];
+      }
+    }
+
+    // Bước 3: Nếu vẫn không đủ, lấy từ tất cả categories
+    if (relatedProducts.length < limit) {
+      const remaining = limit - relatedProducts.length;
+      const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+
+      const otherProducts = await this.prisma.product.findMany({
+        where: {
+          id: { notIn: excludeIds },
+          status: 'ACTIVE',
+        },
+        take: remaining,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          seller: { select: { id: true, fullName: true } },
+          category: true,
+          _count: { select: { bids: true } },
+        },
+      });
+
+      relatedProducts = [...relatedProducts, ...otherProducts];
+    }
+
+    return relatedProducts;
   }
 }
