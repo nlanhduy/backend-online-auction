@@ -87,9 +87,8 @@ export class AuthController {
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
-  @ApiResponse({ status: 200, description: 'Access token refreshed successfully.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiBearerAuth('access-token')
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 401 })
   async refreshTokens(
     @Req() req: express.Request,
     @Res({ passthrough: true }) res: express.Response,
@@ -104,9 +103,9 @@ export class AuthController {
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
       secure: false,
-      sameSite: 'strict',
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/auth/refresh',
+      path: '/',
     });
 
     const { refreshToken: _, ...rest } = tokens;
