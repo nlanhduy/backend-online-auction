@@ -11,7 +11,7 @@ datasource db {
 model User {
   id                         String                 @id @default(uuid())
   email                      String                 @unique
-  password                   String
+  password                   String?
   fullName                   String
   role                       UserRole               @default(BIDDER)
   createdAt                  DateTime               @default(now())
@@ -19,10 +19,13 @@ model User {
   dateOfBirth                DateTime?
   negativeRating             Int                    @default(0)
   positiveRating             Int                    @default(0)
-  address                    String
+  address                    String?
   avatar                     String?
   sellerExpiration           DateTime?
   paypalEmail                String?
+  googleId                   String?                @unique
+  profilePicture             String?
+  provider                   String?
   bids                       Bid[]
   favoriteProducts           FavoriteProduct[]
   Order_Order_buyerIdToUser  Order[]                @relation("Order_buyerIdToUser")
@@ -198,7 +201,7 @@ model DescriptionHistory {
 
 model Order {
   id                                  String        @id
-  productId                           String
+  productId                           String        
   buyerId                             String
   sellerId                            String
   status                              OrderStatus   @default(PAYMENT_PENDING)
