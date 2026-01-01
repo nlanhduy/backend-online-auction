@@ -181,12 +181,12 @@ export class ProductsService {
             createdBy: true,
           },
         },
-        order: userId ? {
+        Order: userId ? {
           include: {
-            buyer: { select: { id: true, fullName: true, email: true, avatar: true } },
-            seller: { select: { id: true, fullName: true, email: true, avatar: true } },
-            buyerRating: true,
-            sellerRating: true,
+            User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+            User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+            Rating_Order_buyerRatingIdToRating: true,
+            Rating_Order_sellerRatingIdToRating: true,
           },
         } : false,
       },
@@ -200,7 +200,7 @@ export class ProductsService {
     const latestHistory = product.descriptionHistories[0];
 
     // Destructure để bỏ descriptionHistory array cũ và description gốc
-    const { descriptionHistory, descriptionHistories, description, order, ...productData } = product;
+    const { descriptionHistory, descriptionHistories, description, Order: order, ...productData } = product;
 
     const result = {
       ...productData,
@@ -214,14 +214,28 @@ export class ProductsService {
 
     // Nếu sản phẩm đã kết thúc (COMPLETED/CANCELED)
     if (product.status !== 'ACTIVE') {
+      // Debug logging
+      console.log('🔍 Debug Order Info:');
+      console.log('- userId:', userId);
+      console.log('- product.winnerId:', product.winnerId);
+      console.log('- product.sellerId:', product.sellerId);
+      console.log('- order array:', order);
+      console.log('- order length:', order ? order.length : 'null');
+      
       // Nếu có order và user là buyer hoặc seller -> trả về order info
-      if (order && userId && (order.buyerId === userId || order.sellerId === userId)) {
+      const orderData = order && order.length > 0 ? order[0] : null;
+      console.log('- orderData:', orderData);
+      
+      if (orderData && userId && (orderData.buyerId === userId || orderData.sellerId === userId)) {
+        console.log('✅ User is buyer/seller - returning ORDER_FULFILLMENT');
         return {
           ...result,
-          order: order,
+          order: orderData,
           viewType: 'ORDER_FULFILLMENT', // Frontend dùng để hiển thị view phù hợp
         };
       }
+      
+      console.log('❌ No order or user not authorized - returning AUCTION_ENDED');
       
       // Người dùng khác chỉ thấy thông báo đã kết thúc
       return {
@@ -1111,7 +1125,7 @@ export class ProductsService {
             fullName: true,
           },
         },
-        order: {
+        Order: {
           select: {
             id: true,
             status: true,
@@ -1207,7 +1221,7 @@ export class ProductsService {
     }
 
     // Analyze order status and determine required actions
-    const orderInfo = this.analyzeOrderStatus(product.order, isSeller, isWinner);
+    const orderInfo = this.analyzeOrderStatus(product.Order, isSeller, isWinner);
 
     return {
       canRate,

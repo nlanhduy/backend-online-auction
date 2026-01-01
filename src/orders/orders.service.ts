@@ -17,15 +17,15 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        product: {
+        Product: {
           include: {
             seller: { select: { id: true, fullName: true, email: true, avatar: true } },
           },
         },
-        buyer: { select: { id: true, fullName: true, email: true, avatar: true } },
-        seller: { select: { id: true, fullName: true, email: true, avatar: true } },
-        buyerRating: true,
-        sellerRating: true,
+        User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        Rating_Order_buyerRatingIdToRating: true,
+        Rating_Order_sellerRatingIdToRating: true,
       },
     });
 
@@ -45,14 +45,14 @@ export class OrdersService {
    * Get order by product ID
    */
   async getOrderByProductId(productId: string, userId: string) {
-    const order = await this.prisma.order.findUnique({
+    const order = await this.prisma.order.findFirst({
       where: { productId },
       include: {
-        product: true,
-        buyer: { select: { id: true, fullName: true, email: true, avatar: true } },
-        seller: { select: { id: true, fullName: true, email: true, avatar: true } },
-        buyerRating: true,
-        sellerRating: true,
+        Product: true,
+        User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        Rating_Order_buyerRatingIdToRating: true,
+        Rating_Order_sellerRatingIdToRating: true,
       },
     });
 
@@ -94,7 +94,7 @@ export class OrdersService {
     const sellerAmount = amount - platformFee;
 
     // Check if order already exists
-    const existingOrder = await this.prisma.order.findUnique({
+    const existingOrder = await this.prisma.order.findFirst({
       where: { productId },
     });
 
@@ -119,6 +119,7 @@ export class OrdersService {
     // Create new order
     return this.prisma.order.create({
       data: {
+        id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         productId,
         buyerId: product.winnerId,
         sellerId: product.sellerId,
@@ -131,7 +132,8 @@ export class OrdersService {
         sellerPaypalEmail: product.seller.paypalEmail,
         paidAt: new Date(),
         status: OrderStatus.SHIPPING_INFO_PENDING,
-        payoutStatus: PayoutStatus.PENDING, // Chưa chuyển tiền cho seller
+        payoutStatus: PayoutStatus.PENDING,
+        updatedAt: new Date(),
       },
     });
   }
@@ -311,7 +313,7 @@ export class OrdersService {
   async cancelOrder(orderId: string, userId: string, dto: CancelOrderDto) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { buyer: true },
+      include: { User_Order_buyerIdToUser: true },
     });
 
     if (!order) {
@@ -348,7 +350,6 @@ export class OrdersService {
           receiverId: order.buyerId,
           value: -1,
           comment: `Order cancelled: ${dto.reason}`,
-          orderId: orderId,
         },
       }),
     ]);
@@ -371,8 +372,8 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        buyerRating: true,
-        sellerRating: true,
+        Rating_Order_buyerRatingIdToRating: true,
+        Rating_Order_sellerRatingIdToRating: true,
       },
     });
 
@@ -394,7 +395,7 @@ export class OrdersService {
     // Determine who is rating whom
     const giverId = userId;
     const receiverId = isBuyer ? order.sellerId : order.buyerId;
-    const existingRating = isBuyer ? order.buyerRating : order.sellerRating;
+    const existingRating = isBuyer ? order.Rating_Order_buyerRatingIdToRating : order.Rating_Order_sellerRatingIdToRating;
 
     let rating;
 
@@ -431,7 +432,6 @@ export class OrdersService {
           receiverId,
           value: dto.value,
           comment: dto.comment,
-          orderId,
         },
       });
 
@@ -462,7 +462,7 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where: { buyerId: userId },
       include: {
-        product: {
+        Product: {
           select: {
             id: true,
             name: true,
@@ -470,7 +470,7 @@ export class OrdersService {
             currentPrice: true,
           },
         },
-        seller: {
+        User_Order_sellerIdToUser: {
           select: {
             id: true,
             fullName: true,
@@ -478,7 +478,7 @@ export class OrdersService {
             avatar: true,
           },
         },
-        buyerRating: true,
+        Rating_Order_buyerRatingIdToRating: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -491,7 +491,7 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where: { sellerId: userId },
       include: {
-        product: {
+        Product: {
           select: {
             id: true,
             name: true,
@@ -499,7 +499,7 @@ export class OrdersService {
             currentPrice: true,
           },
         },
-        buyer: {
+        User_Order_buyerIdToUser: {
           select: {
             id: true,
             fullName: true,
@@ -507,7 +507,7 @@ export class OrdersService {
             avatar: true,
           },
         },
-        sellerRating: true,
+        Rating_Order_sellerRatingIdToRating: true,
       },
       orderBy: { createdAt: 'desc' },
     });
