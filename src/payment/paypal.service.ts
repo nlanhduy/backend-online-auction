@@ -46,8 +46,12 @@ export class PaypalService{
                 brand_name:'Online Auction',
                 landing_page:'BILLING',
                 user_action:'PAY_NOW',
-                return_url: this.configService.get<string>('PAYPAL_RETURN_URL') || 'http://localhost:3000/payment/success',
-                cancel_url: this.configService.get<string>('PAYPAL_CANCEL_URL') || 'http://localhost:3000/payment/cancel',
+                return_url: process.env.PAYPAL_RETURN_URL || this.configService.get<string>('PAYPAL_RETURN_URL') || 'http://localhost:5173/payment/success',
+                cancel_url: process.env.PAYPAL_CANCEL_URL || this.configService.get<string>('PAYPAL_CANCEL_URL') || 'http://localhost:5173/payment/cancel',
+                shipping_preference: 'NO_SHIPPING',
+                payment_method: {
+                    payee_preferred: 'IMMEDIATE_PAYMENT_REQUIRED'
+                }
             }
         })
 

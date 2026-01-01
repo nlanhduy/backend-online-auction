@@ -2,6 +2,7 @@
 
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
+import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -15,6 +16,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Product, UserRole } from '@prisma/client';
@@ -69,6 +71,7 @@ export class ProductsController {
   }
 
   @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
   @ApiOperation({ 
     summary: 'Get product details by ID (Public)',
