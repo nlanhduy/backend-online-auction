@@ -70,6 +70,7 @@ export class OrdersService {
 
   /**
    * Create order after payment (called from payment service)
+   * Sử dụng upsert để handle race condition một cách atomic
    */
   async createOrderAfterPayment(
     productId: string,
@@ -88,37 +89,15 @@ export class OrdersService {
       throw new BadRequestException('Product not found or no winner');
     }
 
-    // Tính platform fee (5%) và seller amount
-    const PLATFORM_FEE_PERCENT = 0.05; // 5%
+    const PLATFORM_FEE_PERCENT = 0.05;
     const platformFee = amount * PLATFORM_FEE_PERCENT;
     const sellerAmount = amount - platformFee;
 
-    // Check if order already exists
-    const existingOrder = await this.prisma.order.findFirst({
+    // Sử dụng upsert để tránh race condition
+    // Với unique constraint trên productId, chỉ 1 order được tạo
+    return this.prisma.order.upsert({
       where: { productId },
-    });
-
-    if (existingOrder) {
-      // Update existing order
-      return this.prisma.order.update({
-        where: { id: existingOrder.id },
-        data: {
-          paymentStatus: PaymentStatus.COMPLETED,
-          paypalOrderId,
-          paypalTransactionId: transactionId,
-          paymentAmount: amount,
-          platformFee,
-          sellerAmount,
-          sellerPaypalEmail: product.seller.paypalEmail,
-          paidAt: new Date(),
-          status: OrderStatus.SHIPPING_INFO_PENDING,
-        },
-      });
-    }
-
-    // Create new order
-    return this.prisma.order.create({
-      data: {
+      create: {
         id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         productId,
         buyerId: product.winnerId,
@@ -135,9 +114,21 @@ export class OrdersService {
         payoutStatus: PayoutStatus.PENDING,
         updatedAt: new Date(),
       },
+      update: {
+        paymentStatus: PaymentStatus.COMPLETED,
+        paypalOrderId,
+        paypalTransactionId: transactionId,
+        paymentAmount: amount,
+        platformFee,
+        sellerAmount,
+        sellerPaypalEmail: product.seller.paypalEmail,
+        paidAt: new Date(),
+        // Chỉ update status nếu đang pending
+        status: OrderStatus.SHIPPING_INFO_PENDING,
+        updatedAt: new Date(),
+      },
     });
   }
-
   /**
    * Step 2: Buyer submits shipping address
    */

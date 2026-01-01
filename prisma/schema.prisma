@@ -240,6 +240,7 @@ model Order {
   User_Order_sellerIdToUser           User          @relation("Order_sellerIdToUser", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   Rating_Order_sellerRatingIdToRating Rating?       @relation("Order_sellerRatingIdToRating", fields: [sellerRatingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([productId])
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
