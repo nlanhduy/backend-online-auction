@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { retry, take } from 'rxjs';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
@@ -181,14 +186,20 @@ export class ProductsService {
             createdBy: true,
           },
         },
-        Order: userId ? {
-          include: {
-            User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
-            User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
-            Rating_Order_buyerRatingIdToRating: true,
-            Rating_Order_sellerRatingIdToRating: true,
-          },
-        } : false,
+        Order: userId
+          ? {
+              include: {
+                User_Order_buyerIdToUser: {
+                  select: { id: true, fullName: true, email: true, avatar: true },
+                },
+                User_Order_sellerIdToUser: {
+                  select: { id: true, fullName: true, email: true, avatar: true },
+                },
+                Rating_Order_buyerRatingIdToRating: true,
+                Rating_Order_sellerRatingIdToRating: true,
+              },
+            }
+          : false,
       },
     });
 
@@ -200,7 +211,13 @@ export class ProductsService {
     const latestHistory = product.descriptionHistories[0];
 
     // Destructure để bỏ descriptionHistory array cũ và description gốc
-    const { descriptionHistory, descriptionHistories, description, Order: order, ...productData } = product;
+    const {
+      descriptionHistory,
+      descriptionHistories,
+      description,
+      Order: order,
+      ...productData
+    } = product;
 
     const result = {
       ...productData,
@@ -220,12 +237,11 @@ export class ProductsService {
       console.log('- product.winnerId:', product.winnerId);
       console.log('- product.sellerId:', product.sellerId);
       console.log('- order array:', order);
-      console.log('- order length:', order ? order.length : 'null');
-      
+
       // Nếu có order và user là buyer hoặc seller -> trả về order info
       const orderData = order && order.length > 0 ? order[0] : null;
       console.log('- orderData:', orderData);
-      
+
       if (orderData && userId && (orderData.buyerId === userId || orderData.sellerId === userId)) {
         console.log('✅ User is buyer/seller - returning ORDER_FULFILLMENT');
         return {
@@ -234,9 +250,9 @@ export class ProductsService {
           viewType: 'ORDER_FULFILLMENT', // Frontend dùng để hiển thị view phù hợp
         };
       }
-      
+
       console.log('❌ No order or user not authorized - returning AUCTION_ENDED');
-      
+
       // Người dùng khác chỉ thấy thông báo đã kết thúc
       return {
         ...result,
@@ -1162,7 +1178,14 @@ export class ProductsService {
     // Check if user already gave rating in this transaction
     // For seller: check if they rated the winner
     // For winner: check if they rated the seller
-    let existingRating: { id: string; createdAt: Date; value: number; comment: string | null; giverId: string; receiverId: string; } | null = null;
+    let existingRating: {
+      id: string;
+      createdAt: Date;
+      value: number;
+      comment: string | null;
+      giverId: string;
+      receiverId: string;
+    } | null = null;
     if (isSeller && product.winnerId) {
       existingRating = await this.prisma.rating.findFirst({
         where: {
@@ -1357,8 +1380,8 @@ export class ProductsService {
   async findRelatedProducts(productId: string, limit: number = 5) {
     const currentProduct = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { 
-        categoryId: true, 
+      select: {
+        categoryId: true,
         id: true,
       },
     });
@@ -1392,7 +1415,7 @@ export class ProductsService {
 
       if (category?.parentId) {
         const remaining = limit - relatedProducts.length;
-        const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+        const excludeIds = [productId, ...relatedProducts.map((p) => p.id)];
 
         const parentCategoryProducts = await this.prisma.product.findMany({
           where: {
@@ -1416,7 +1439,7 @@ export class ProductsService {
     // Bước 3: Nếu vẫn không đủ, lấy từ tất cả categories
     if (relatedProducts.length < limit) {
       const remaining = limit - relatedProducts.length;
-      const excludeIds = [productId, ...relatedProducts.map(p => p.id)];
+      const excludeIds = [productId, ...relatedProducts.map((p) => p.id)];
 
       const otherProducts = await this.prisma.product.findMany({
         where: {

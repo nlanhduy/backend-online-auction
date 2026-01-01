@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -15,19 +16,24 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterVerifyDto } from './dto/register-verify.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Public()
   @Post('register/request')
@@ -138,5 +144,79 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   getProfile(@Req() req: express.Request) {
     return req.user;
+  }
+  @Public()
+  @Get('google')
+  @UseGuards(GoogleOAuthGuard)
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  @ApiResponse({ status: 302, description: 'Redirects to Google login page' })
+  async googleAuth() {}
+
+  @Public()
+  @Get('google/callback')
+  @UseGuards(GoogleOAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback' })
+  @ApiResponse({ status: 302, description: 'Redirects to frontend with tokens' })
+  async googleAuthRedirect(@Req() req: express.Request, @Res() res: express.Response) {
+    try {
+      const googleUser = req.user as {
+        googleId: string;
+        email: string;
+        fullName: string;
+        profilePicture?: string;
+      };
+
+      const result = await this.authService.googleLogin(googleUser);
+
+      res.cookie('refresh_token', result.refreshToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+
+      const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+
+      return res.redirect(`${frontendUrl}/auth/callback?token=${result.accessToken}`);
+    } catch (error) {
+      const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+
+      return res.redirect(
+        `${frontendUrl}/auth/error?message=${encodeURIComponent(
+          error.message || 'Authentication failed',
+        )}`,
+      );
+    }
+  }
+
+  @Public()
+  @Get('google/callback/json')
+  @UseGuards(GoogleOAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback - JSON response' })
+  @ApiResponse({ status: 200, description: 'Returns tokens as JSON' })
+  async googleAuthCallback(
+    @Req() req: express.Request,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    const googleUser = req.user as {
+      googleId: string;
+      email: string;
+      fullName: string;
+      profilePicture?: string;
+    };
+
+    const result = await this.authService.googleLogin(googleUser);
+
+    res.cookie('refresh_token', result.refreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
+    const { refreshToken, ...rest } = result;
+    return rest;
   }
 }

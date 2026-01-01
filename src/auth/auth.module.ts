@@ -10,6 +10,7 @@ import { PassportModule } from '@nestjs/passport';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -23,7 +24,8 @@ import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),
         signOptions: {
-          expiresIn: '15m', // Access token expires in 15 minutes
+          // 1 hour
+          expiresIn: '1h',
         },
       }),
     }),
@@ -31,7 +33,7 @@ import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
     OtpModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshTokenStrategy],
+  providers: [AuthService, JwtStrategy, RefreshTokenStrategy, GoogleStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

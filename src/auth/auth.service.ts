@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -131,6 +132,10 @@ export class AuthService {
     });
 
     if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.password === null) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -276,5 +281,95 @@ export class AuthService {
 
   private async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
     return bcrypt.compare(plainPassword, hashedPassword);
+  }
+
+  // Add these methods to your existing AuthService class
+
+  /**
+   * Google OAuth Sign In / Sign Up
+   * Creates user if doesn't exist, logs in if exists
+   */
+  async googleLogin(googleUser: {
+    googleId: string;
+    email: string;
+    fullName: string;
+    profilePicture?: string;
+  }) {
+    const { googleId, email, fullName, profilePicture } = googleUser;
+
+    // Validate email exists
+    if (!email) {
+      throw new BadRequestException('Email not provided by Google');
+    }
+
+    // Check if user exists by Google ID
+    let user = await this.prisma.user.findUnique({
+      where: { googleId },
+    });
+
+    // If not found by Google ID, check by email
+    if (!user) {
+      user = await this.prisma.user.findUnique({
+        where: { email },
+      });
+    }
+
+    // If user exists but doesn't have Google ID, link the account
+    if (user && !user.googleId) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId,
+          profilePicture: profilePicture || user.profilePicture,
+          provider: 'google',
+        },
+      });
+    }
+
+    // If user doesn't exist at all, create new user (Sign Up)
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          googleId,
+          fullName,
+          profilePicture,
+          provider: 'google',
+          role: UserRole.BIDDER,
+        },
+      });
+    }
+
+    // Generate JWT tokens
+    const tokens = await this.generateTokens(user.id, user.email, user.role);
+
+    // Save refresh token
+    await this.saveRefreshToken(user.id, tokens.refreshToken);
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
+    return {
+      user: userWithoutPassword,
+      ...tokens,
+    };
+  }
+
+  /**
+   * Handle existing email with different provider
+   * Prevents account hijacking
+   */
+  async handleExistingEmailConflict(email: string, provider: string) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser && existingUser.provider && existingUser.provider !== provider) {
+      throw new ConflictException(
+        `An account with this email already exists using ${existingUser.provider} login. Please use that method to sign in.`,
+      );
+    }
+
+    return existingUser;
   }
 }
