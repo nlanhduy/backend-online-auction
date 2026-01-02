@@ -342,7 +342,7 @@ export class AdminService{
             totalRevenue: cat.products.reduce(
             (sum, p) =>
                 sum +
-                p.Order.reduce((orderSum, o) => orderSum + (o.paymentAmount || 0), 0),
+                (Array.isArray(p.Order) ? p.Order.reduce((orderSum, o) => orderSum + (o.paymentAmount || 0), 0) : 0),
             0,
             ),
         }))
