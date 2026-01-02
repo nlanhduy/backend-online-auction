@@ -22,6 +22,7 @@ import { SystemSettingsModule } from './system-setting/system-settings.module';
 import { BidsModule } from './bids/bids.module';
 import { PaymentModule } from './payment/payment.module';
 import { OrdersModule } from './orders/orders.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { OrdersModule } from './orders/orders.module';
     BidsModule,
     PaymentModule,
     OrdersModule,
+    AdminModule
   ],
   controllers: [AppController],
   providers: [
