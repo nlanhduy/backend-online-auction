@@ -239,7 +239,7 @@ export class ProductsService {
       console.log('- order array:', order);
 
       // Nếu có order và user là buyer hoặc seller -> trả về order info
-      const orderData = order && order.length > 0 ? order[0] : null;
+      const orderData = order;
       console.log('- orderData:', orderData);
 
       if (orderData && userId && (orderData.buyerId === userId || orderData.sellerId === userId)) {

@@ -34,13 +34,13 @@ import { ChangeEmailResponseDto } from './dto/change-email-response.dto';
 import { ChangeEmailVerifyDto } from './dto/change-email-verify.dto';
 import { ChangeNameDto } from './dto/change-name.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { CreateRatingDto } from './dto/create-rating.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ForgotPasswordRequestDto, ForgotPasswordVerifyDto } from './dto/forget-password.dto';
 import { GetUserProductDto } from './dto/get-user-product.dto';
 import { RequestSellerUpgradeDto } from './dto/request-seller-upgrade.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './user.service';
-import { CreateRatingDto } from './dto/create-rating.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -303,41 +303,56 @@ export class UsersController {
   }
   // ==================== Bidder Routes ====================
   @Get('me/active-bids')
-  @ApiOperation({summary:'Get products I am currently bidding on'})
-  @ApiQuery({name: 'page', required:false, type:Number})
-  @ApiQuery({name:'limit', required:false, type:Number})
-  getMyActiveBids(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+  @ApiOperation({ summary: 'Get products I am currently bidding on' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getMyActiveBids(
+    @CurrentUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.usersService.getMyActiveBids(user.id, page, limit);
   }
 
   @Get('me/won-auctions')
-  @ApiOperation({summary:'Get products I have won from auctions'})
-  @ApiQuery({name: 'page', required:false, type:Number})
-  @ApiQuery({name:'limit', required:false, type:Number})
-  getMyWonAuctions(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+  @ApiOperation({ summary: 'Get products I have won from auctions' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getMyWonAuctions(
+    @CurrentUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.usersService.getMyWonProducts(user.id, page, limit);
   }
 
   @Get('me/given-ratings')
-  @ApiOperation({summary:'Get ratings I have given to others'})
-  @ApiQuery({name: 'page', required:false, type:Number})
-  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiOperation({ summary: 'Get ratings I have given to others' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Ratings given retrieved successfully' })
-  getMyGivenRatings(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+  getMyGivenRatings(
+    @CurrentUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.usersService.getMyGivenRatings(user.id, page, limit);
   }
 
   @Post('ratings')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Rate a user (+1 or -1) with optional comment. BIDDER can rate SELLER after winning, SELLER can rate BIDDER after selling' })
+  @ApiOperation({
+    summary:
+      'Rate a user (+1 or -1) with optional comment. BIDDER can rate SELLER after winning, SELLER can rate BIDDER after selling',
+  })
   @ApiBody({ type: CreateRatingDto })
   @ApiResponse({ status: 201, description: 'Rating created successfully' })
-  @ApiResponse({ status: 400, description: 'Cannot rate yourself / Invalid rating relationship / Must have transaction first' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot rate yourself / Invalid rating relationship / Must have transaction first',
+  })
   @ApiResponse({ status: 409, description: 'Already rated this user' })
-  createRating(
-    @CurrentUser() user: any,
-    @Body() dto: CreateRatingDto,
-  ) {
+  createRating(@CurrentUser() user: any, @Body() dto: CreateRatingDto) {
     return this.usersService.createRating(user.id, dto);
   }
 
@@ -345,16 +360,18 @@ export class UsersController {
 
   @Get('me/completed-sales')
   @Roles(UserRole.SELLER)
-  @ApiOperation({summary:'Get products I have sold with winners (SELLER only)'})
-  @ApiQuery({name: 'page', required:false, type:Number})
-  @ApiQuery({name:'limit', required:false, type:Number})
+  @ApiOperation({ summary: 'Get products I have sold with winners (SELLER only)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Completed sales retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Only sellers can access this endpoint' })
-  getMyCompletedSales(@CurrentUser() user:any, @Query('page') page?: number, @Query('limit') limit?: number) {
+  getMyCompletedSales(
+    @CurrentUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.usersService.getMyCompletedSales(user.id, page, limit);
   }
-
-
 
   // ==================== Admin Routes ====================
 
@@ -368,13 +385,15 @@ export class UsersController {
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
-
   @Get()
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Get all users (ADMIN only)' })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
-  findAll() {
-    return this.usersService.findAll();
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 403, description: 'Only ADMIN can access this endpoint' })
+  findAll(@Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.findAll(page, limit);
   }
 
   @Get(':id')

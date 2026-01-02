@@ -5,6 +5,10 @@ import { UserRole } from '@prisma/client';
 export class UpdateUserDto {
   @IsString()
   @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
   fullName?: string;
 
   @IsDateString()
@@ -18,4 +22,8 @@ export class UpdateUserDto {
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole;
+
+  @IsString()
+  @IsOptional()
+  password?: string;
 }

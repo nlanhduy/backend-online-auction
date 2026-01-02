@@ -72,22 +72,35 @@ export class UsersService {
     return userWithoutPassword;
   }
 
-  async findAll() {
-    const users = await this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        address: true,
-        dateOfBirth: true,
-        role: true,
-        positiveRating: true,
-        negativeRating: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    return users;
+  async findAll(page = 1, limit = 10) {
+    // sanitize
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(50, Math.max(1, Number(limit)));
+
+    const skip = (pageNum - 1) * limitNum;
+
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        skip,
+        take: limitNum,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.user.count(),
+    ]);
+
+    const totalPages = Math.ceil(total / limitNum);
+
+    return {
+      users,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
+      hasNext: pageNum < totalPages,
+      hasPrevious: pageNum > 1,
+    };
   }
 
   async getAllUserProducts(userId: string, getUserProductDto: GetUserProductDto) {
@@ -204,6 +217,11 @@ export class UsersService {
         dateOfBirth: updateUserDto.dateOfBirth ? new Date(updateUserDto.dateOfBirth) : undefined,
         address: updateUserDto.address,
         role: updateUserDto.role,
+        password: updateUserDto.password
+          ? await this.hashPassword(updateUserDto.password)
+          : undefined,
+        email: updateUserDto.email,
+        updatedAt: new Date(),
       },
       select: {
         id: true,
