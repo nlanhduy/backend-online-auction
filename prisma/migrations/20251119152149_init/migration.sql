@@ -1,5 +1,9 @@
--- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('BIDDER', 'SELLER', 'ADMIN');
+-- CreateEnum (with conflict handling)
+DO $$ BEGIN
+  CREATE TYPE "UserRole" AS ENUM ('BIDDER', 'SELLER', 'ADMIN');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
 CREATE TABLE "User" (
