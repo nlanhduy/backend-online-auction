@@ -13,7 +13,6 @@ model User {
   email                      String                 @unique
   password                   String?
   fullName                   String
-  role                       UserRole               @default(BIDDER)
   createdAt                  DateTime               @default(now())
   updatedAt                  DateTime               @updatedAt
   dateOfBirth                DateTime?
@@ -26,6 +25,7 @@ model User {
   googleId                   String?                @unique
   profilePicture             String?
   provider                   String?
+  role                       UserRole               @default(BIDDER)
   bids                       Bid[]
   favoriteProducts           FavoriteProduct[]
   Order_Order_buyerIdToUser  Order[]                @relation("Order_buyerIdToUser")
@@ -99,7 +99,7 @@ model Product {
   allowNewBidders      Boolean                  @default(true)
   bids                 Bid[]
   favoriteBy           FavoriteProduct[]
-  Order                Order[]
+  Order                Order?
   category             Category                 @relation(fields: [categoryId], references: [id])
   seller               User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   questions            Question[]
@@ -201,7 +201,7 @@ model DescriptionHistory {
 
 model Order {
   id                                  String        @id
-  productId                           String        
+  productId                           String        @unique
   buyerId                             String
   sellerId                            String
   status                              OrderStatus   @default(PAYMENT_PENDING)
