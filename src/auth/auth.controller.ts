@@ -57,13 +57,12 @@ export class AuthController {
   ) {
     const tokens = await this.authService.verifyAndRegister(registerVerifyDto);
 
-    // ✅ FIX: Consistent cookie name and path
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // ✅ Dynamic based on environment
-      sameSite: 'lax', // ✅ Changed from 'strict' for better compatibility
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/', // ✅ FIX: Changed from '/auth/refresh' to '/' for broader access
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
     });
 
     const { refreshToken, ...rest } = tokens;
@@ -78,13 +77,12 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: express.Response) {
     const tokens = await this.authService.login(loginDto);
 
-    // ✅ FIX: Consistent cookie name and path
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/', // ✅ FIX: Changed from '/auth/refresh' to '/'
+      path: '/',
     });
 
     const { refreshToken, ...rest } = tokens;
@@ -108,11 +106,10 @@ export class AuthController {
 
     const tokens = await this.authService.refreshTokens(userId, refreshToken);
 
-    // ✅ FIX: Consistent cookie name 'refresh_token'
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -133,7 +130,6 @@ export class AuthController {
     const userId = req.user['sub'];
     await this.authService.logout(userId);
 
-    // ✅ FIX: Consistent cookie name and path
     res.clearCookie('refresh_token', { path: '/' });
 
     return { message: 'Logged out successfully' };
