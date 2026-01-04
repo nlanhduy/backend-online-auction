@@ -1,14 +1,27 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+import { ChatService } from 'src/chat/chat.service';
+
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrderStatus, PaymentStatus, PayoutStatus } from '@prisma/client';
-import { SubmitShippingDto } from './dto/submit-shipping.dto';
-import { ConfirmShipmentDto } from './dto/confirm-shipment.dto';
+
+import { PrismaService } from '../prisma/prisma.service';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { ConfirmShipmentDto } from './dto/confirm-shipment.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
+import { SubmitShippingDto } from './dto/submit-shipping.dto';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private chatService: ChatService,
+  ) {}
 
   /**
    * Get order by ID with authorization check
@@ -22,8 +35,12 @@ export class OrdersService {
             seller: { select: { id: true, fullName: true, email: true, avatar: true } },
           },
         },
-        User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
-        User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        User_Order_buyerIdToUser: {
+          select: { id: true, fullName: true, email: true, avatar: true },
+        },
+        User_Order_sellerIdToUser: {
+          select: { id: true, fullName: true, email: true, avatar: true },
+        },
         Rating_Order_buyerRatingIdToRating: true,
         Rating_Order_sellerRatingIdToRating: true,
       },
@@ -49,8 +66,12 @@ export class OrdersService {
       where: { productId },
       include: {
         Product: true,
-        User_Order_buyerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
-        User_Order_sellerIdToUser: { select: { id: true, fullName: true, email: true, avatar: true } },
+        User_Order_buyerIdToUser: {
+          select: { id: true, fullName: true, email: true, avatar: true },
+        },
+        User_Order_sellerIdToUser: {
+          select: { id: true, fullName: true, email: true, avatar: true },
+        },
         Rating_Order_buyerRatingIdToRating: true,
         Rating_Order_sellerRatingIdToRating: true,
       },
@@ -88,19 +109,18 @@ export class OrdersService {
       throw new BadRequestException('Product not found or no winner');
     }
 
-    // Tính platform fee (5%) và seller amount
-    const PLATFORM_FEE_PERCENT = 0.05; // 5%
+    const PLATFORM_FEE_PERCENT = 0.05;
     const platformFee = amount * PLATFORM_FEE_PERCENT;
     const sellerAmount = amount - platformFee;
 
-    // Check if order already exists
     const existingOrder = await this.prisma.order.findFirst({
       where: { productId },
     });
 
+    let order;
+
     if (existingOrder) {
-      // Update existing order
-      return this.prisma.order.update({
+      order = await this.prisma.order.update({
         where: { id: existingOrder.id },
         data: {
           paymentStatus: PaymentStatus.COMPLETED,
@@ -114,28 +134,31 @@ export class OrdersService {
           status: OrderStatus.SHIPPING_INFO_PENDING,
         },
       });
+    } else {
+      order = await this.prisma.order.create({
+        data: {
+          id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          productId,
+          buyerId: product.winnerId,
+          sellerId: product.sellerId,
+          paymentStatus: PaymentStatus.COMPLETED,
+          paypalOrderId,
+          paypalTransactionId: transactionId,
+          paymentAmount: amount,
+          platformFee,
+          sellerAmount,
+          sellerPaypalEmail: product.seller.paypalEmail,
+          paidAt: new Date(),
+          status: OrderStatus.SHIPPING_INFO_PENDING,
+          payoutStatus: PayoutStatus.PENDING,
+          updatedAt: new Date(),
+        },
+      });
+
+      await this.chatService.createChatForOrder(order.id);
     }
 
-    // Create new order
-    return this.prisma.order.create({
-      data: {
-        id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        productId,
-        buyerId: product.winnerId,
-        sellerId: product.sellerId,
-        paymentStatus: PaymentStatus.COMPLETED,
-        paypalOrderId,
-        paypalTransactionId: transactionId,
-        paymentAmount: amount,
-        platformFee,
-        sellerAmount,
-        sellerPaypalEmail: product.seller.paypalEmail,
-        paidAt: new Date(),
-        status: OrderStatus.SHIPPING_INFO_PENDING,
-        payoutStatus: PayoutStatus.PENDING,
-        updatedAt: new Date(),
-      },
-    });
+    return order;
   }
 
   /**
@@ -229,7 +252,10 @@ export class OrdersService {
       throw new ForbiddenException('Only buyer can confirm received');
     }
 
-    if (order.status !== OrderStatus.IN_TRANSIT && order.status !== OrderStatus.BUYER_CONFIRMATION_PENDING) {
+    if (
+      order.status !== OrderStatus.IN_TRANSIT &&
+      order.status !== OrderStatus.BUYER_CONFIRMATION_PENDING
+    ) {
       throw new BadRequestException('Cannot confirm received at this stage');
     }
 
@@ -395,14 +421,16 @@ export class OrdersService {
     // Determine who is rating whom
     const giverId = userId;
     const receiverId = isBuyer ? order.sellerId : order.buyerId;
-    const existingRating = isBuyer ? order.Rating_Order_buyerRatingIdToRating : order.Rating_Order_sellerRatingIdToRating;
+    const existingRating = isBuyer
+      ? order.Rating_Order_buyerRatingIdToRating
+      : order.Rating_Order_sellerRatingIdToRating;
 
     let rating;
 
     if (existingRating) {
       // Update existing rating
       const oldValue = existingRating.value;
-      
+
       rating = await this.prisma.rating.update({
         where: { id: existingRating.id },
         data: {
@@ -413,8 +441,8 @@ export class OrdersService {
 
       // Update receiver's rating count
       if (oldValue !== dto.value) {
-        const incrementPositive = dto.value === 1 ? 1 : (oldValue === 1 ? -1 : 0);
-        const incrementNegative = dto.value === -1 ? 1 : (oldValue === -1 ? -1 : 0);
+        const incrementPositive = dto.value === 1 ? 1 : oldValue === 1 ? -1 : 0;
+        const incrementNegative = dto.value === -1 ? 1 : oldValue === -1 ? -1 : 0;
 
         await this.prisma.user.update({
           where: { id: receiverId },
@@ -438,17 +466,16 @@ export class OrdersService {
       // Link rating to order
       await this.prisma.order.update({
         where: { id: orderId },
-        data: isBuyer
-          ? { buyerRatingId: rating.id }
-          : { sellerRatingId: rating.id },
+        data: isBuyer ? { buyerRatingId: rating.id } : { sellerRatingId: rating.id },
       });
 
       // Update receiver's rating count
       await this.prisma.user.update({
         where: { id: receiverId },
-        data: dto.value === 1
-          ? { positiveRating: { increment: 1 } }
-          : { negativeRating: { increment: 1 } },
+        data:
+          dto.value === 1
+            ? { positiveRating: { increment: 1 } }
+            : { negativeRating: { increment: 1 } },
       });
     }
 

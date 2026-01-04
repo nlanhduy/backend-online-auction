@@ -37,6 +37,7 @@ model User {
   refreshTokens              RefreshToken[]
   upgradeRequests            SellerUpgradeRequest[]
   systemSettingsUpdated      SystemSettings[]
+  messages Message[]
 }
 
 model RefreshToken {
@@ -243,10 +244,37 @@ model Order {
   User_Order_sellerIdToUser           User          @relation("Order_sellerIdToUser", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   Rating_Order_sellerRatingIdToRating Rating?       @relation("Order_sellerRatingIdToRating", fields: [sellerRatingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  chat                                Chat?
+
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
 }
+
+model Chat {
+  id        String    @id @default(uuid())
+  orderId   String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([orderId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@index([senderId])
+} 
 
 enum UserRole {
   BIDDER
