@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
-// src/auth/strategies/jwt.strategy.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
@@ -32,7 +34,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('User not found');
     }
 
-    // Remove password from user object
     const { password, ...result } = user;
     return result;
   }
@@ -45,18 +46,26 @@ export class RefreshTokenStrategy extends PassportStrategy(Strategy, 'jwt-refres
     private readonly prisma: PrismaService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request: Request) => {
+          const token = request?.cookies?.refresh_token;
+          if (!token) {
+            return null;
+          }
+          return token;
+        },
+      ]),
       secretOrKey: configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
       passReqToCallback: true,
     });
   }
 
   async validate(req: Request, payload: JwtPayload) {
-    const authHeader = req.get('Authorization');
-    if (!authHeader) {
-      throw new UnauthorizedException('Missing authorization header');
+    const refreshToken = req.cookies?.refresh_token;
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Missing refresh token');
     }
-    const refreshToken = authHeader.replace('Bearer', '').trim();
 
     const token = await this.prisma.refreshToken.findFirst({
       where: {

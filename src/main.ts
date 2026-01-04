@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
+import cookieParser from 'cookie-parser';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
@@ -21,6 +22,7 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Set-Cookie'],
   });
 
   app.useGlobalPipes(
@@ -33,6 +35,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+  app.use(cookieParser());
+
   const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
   app.useLogger(logger);
 

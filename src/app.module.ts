@@ -47,6 +47,7 @@ import { UsersModule } from './user/user.module';
     OrdersModule,
     AdminModule,
     ChatModule,
+    SystemSettingsModule,
   ],
   controllers: [AppController],
   providers: [

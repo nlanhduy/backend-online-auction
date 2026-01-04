@@ -1,11 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Body, Controller, Get, Patch } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+
 import { CurrentUser } from '../common/decorators/currentUser.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -20,9 +18,9 @@ export class SystemSettingsController {
   @Public()
   @Get()
   @ApiOperation({
-    summary: 'Lấy cấu hình hệ thống hiện tại (Public)',
+    summary: 'Get current system settings (Public)',
     description:
-      'Trả về các tham số: autoExtendThresholdMinutes, extensionDuration, maxExtensions, minImages',
+      'Returns system parameters: autoExtendThresholdMinutes, extensionDuration, maxExtensions, minImages',
   })
   @ApiResponse({ status: 200, description: 'Settings retrieved successfully' })
   getSettings() {
@@ -33,16 +31,13 @@ export class SystemSettingsController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Cập nhật cấu hình hệ thống (ADMIN only)',
+    summary: 'Update system settings (ADMIN only)',
     description:
-      'Điều chỉnh thời gian auto-extension, số ảnh tối thiểu. Áp dụng cho tất cả sản phẩm.',
+      'Adjust auto-extension timing and minimum image requirements. Applied globally to all products.',
   })
   @ApiResponse({ status: 200, description: 'Settings updated successfully' })
   @ApiResponse({ status: 403, description: 'Only ADMIN can update settings' })
-  updateSettings(
-    @Body() updateDto: UpdateSystemSettingsDto,
-    @CurrentUser() user: any,
-  ) {
+  updateSettings(@Body() updateDto: UpdateSystemSettingsDto, @CurrentUser() user: any) {
     return this.systemSettingsService.updateSettings(updateDto, user.sub);
   }
 }

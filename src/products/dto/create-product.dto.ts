@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -15,6 +15,8 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 export class CreateProductDto {
   @ApiProperty({
     description: 'Product name',
@@ -27,8 +29,7 @@ export class CreateProductDto {
   name: string;
 
   @ApiProperty({
-    description:
-      'Detailed product description (supports HTML from WYSIWYG editor)',
+    description: 'Detailed product description (supports HTML from WYSIWYG editor)',
     example: '<p>Brand new product, 100% sealed...</p>',
   })
   @IsString()
@@ -80,8 +81,7 @@ export class CreateProductDto {
   priceStep: number;
 
   @ApiPropertyOptional({
-    description:
-      'Buy-now price (optional, must be greater than the starting price)',
+    description: 'Buy-now price (optional, must be greater than the starting price)',
     example: 25000000,
   })
   @IsOptional()
@@ -114,8 +114,7 @@ export class CreateProductDto {
   categoryId: string;
 
   @ApiPropertyOptional({
-    description:
-      'Enable automatic auction extension if a bid is placed within the last X minutes',
+    description: 'Enable automatic auction extension if a bid is placed within the last X minutes',
     default: false,
     example: true,
   })
@@ -123,4 +122,14 @@ export class CreateProductDto {
   @IsBoolean({ message: 'Auto extend must be a boolean value' })
   @Type(() => Boolean)
   autoExtend?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Allow new bidders to place bids on the product',
+    default: false,
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Allow new bidders must be a boolean value' })
+  @Type(() => Boolean)
+  allowNewBidders?: boolean;
 }
