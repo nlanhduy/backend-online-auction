@@ -579,7 +579,7 @@ export class ProductsService {
     const baseSelect = {
       id: true,
       name: true,
-      images: true,
+      mainImage: true,
       currentPrice: true,
       buyNowPrice: true,
       createdAt: true,
@@ -646,7 +646,7 @@ export class ProductsService {
     const transformProduct = (product: any) => ({
       id: product.id,
       name: product.name,
-      mainImage: product.images.length > 0 ? product.images[0] : null,
+      mainImage: product.mainImage || null,
       currentPrice: product.currentPrice,
       buyNowPrice: product.buyNowPrice,
       createdAt: product.createdAt,
@@ -714,7 +714,8 @@ export class ProductsService {
     // Build where clause=> only take active products
     const where: any = {
       status: 'ACTIVE',
-      endTime: { gt: now },
+      // Removed endTime filter to show all ACTIVE products including expired ones
+      // If you want to filter by endTime, use: endTime: { gt: now }
     };
 
     // Handle search based on searchType
@@ -772,7 +773,7 @@ export class ProductsService {
     const baseSelect = {
       id: true,
       name: true,
-      images: true,
+      mainImage: true,
       currentPrice: true,
       buyNowPrice: true,
       createdAt: true,
@@ -842,7 +843,7 @@ export class ProductsService {
     const transformedProducts: ProductItemDto[] = sortedProducts.map((product) => ({
       id: product.id,
       name: product.name,
-      mainImage: product.images[0] || null,
+      mainImage: product.mainImage || null,
       currentPrice: product.currentPrice,
       buyNowPrice: product.buyNowPrice,
       createdAt: product.createdAt,
@@ -945,7 +946,7 @@ export class ProductsService {
       SELECT 
         p.id,
         p.name,
-        p.images,
+        p."mainImage",
         p."currentPrice",
         p."buyNowPrice",
         p."createdAt",
@@ -1031,7 +1032,14 @@ export class ProductsService {
       products.map(async (product) => {
         const fullProduct = await this.prisma.product.findUnique({
           where: { id: product.id },
-          include: {
+          select: {
+            id: true,
+            name: true,
+            mainImage: true,
+            currentPrice: true,
+            buyNowPrice: true,
+            createdAt: true,
+            endTime: true,
             category: { select: { id: true, name: true } },
             seller: { select: { id: true, fullName: true } },
             bids: {
@@ -1056,7 +1064,7 @@ export class ProductsService {
         const productItem: ProductItemDto = {
           id: fullProduct.id,
           name: fullProduct.name,
-          mainImage: fullProduct.images[0] || null,
+          mainImage: fullProduct.mainImage || null,
           currentPrice: fullProduct.currentPrice,
           buyNowPrice: fullProduct.buyNowPrice,
           createdAt: fullProduct.createdAt,
@@ -1081,7 +1089,7 @@ export class ProductsService {
     return products.map((product) => ({
       id: product.id,
       name: product.name,
-      mainImage: product.images[0] || null,
+      mainImage: product.mainImage || null,
       currentPrice: product.currentPrice,
       buyNowPrice: product.buyNowPrice,
       createdAt: product.createdAt,

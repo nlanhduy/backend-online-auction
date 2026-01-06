@@ -15,6 +15,18 @@ export class BidResponseDto{
     createdAt: string;
     @ApiProperty()
     message: string;
+
+    // auto-bid
+    @ApiProperty()
+    maxAmount?: string;
+    @ApiProperty()
+    isProxy: boolean;
+    @ApiProperty()
+    isWinning?: boolean;
+    @ApiProperty()
+    currentPrice?: string;
+
+
 }
 
 export class BidHistoryItemDto{

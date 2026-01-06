@@ -76,6 +76,7 @@ export class OrdersService {
     paypalOrderId: string,
     transactionId: string,
     amount: number,
+    buyerId: string, // Add buyerId parameter for Buy Now support
   ) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -84,9 +85,23 @@ export class OrdersService {
       },
     });
 
-    if (!product || !product.winnerId) {
-      throw new BadRequestException('Product not found or no winner');
+    if (!product) {
+      throw new BadRequestException('Product not found');
     }
+
+    // If Buy Now (no winnerId yet), update product status and set winner
+    if (!product.winnerId && product.buyNowPrice) {
+      await this.prisma.product.update({
+        where: { id: productId },
+        data: {
+          winnerId: buyerId,
+          status: 'COMPLETED',
+        },
+      });
+    }
+
+    // Use winnerId from product if exists, otherwise use buyerId (Buy Now case)
+    const finalBuyerId = product.winnerId || buyerId;
 
     // Tính platform fee (5%) và seller amount
     const PLATFORM_FEE_PERCENT = 0.05; // 5%
@@ -121,7 +136,7 @@ export class OrdersService {
       data: {
         id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         productId,
-        buyerId: product.winnerId,
+        buyerId: finalBuyerId,
         sellerId: product.sellerId,
         paymentStatus: PaymentStatus.COMPLETED,
         paypalOrderId,
