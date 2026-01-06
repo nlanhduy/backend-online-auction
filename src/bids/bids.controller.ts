@@ -86,4 +86,21 @@ export class BidsController {
     const userId = user?.id || null;
     return await this.bidsService.getBidHistory(productId, userId);
   }
+
+  @Get('status/:productId')
+  @ApiOperation({ 
+    summary: 'Get current bid status for the authenticated user',
+    description: 'Get the user\'s current bid status on a product, including whether they are winning and remaining budget'
+  })
+  @ApiParam({ name: 'productId', description: 'Product ID to get bid status for' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Current bid status or null if no bid placed'
+  })
+  async getMyBidStatus(
+    @Param('productId') productId: string,
+    @CurrentUser() user: any,
+  ) {
+    return await this.bidsService.getMyCurrentBid(productId, user.id);
+  }
 }

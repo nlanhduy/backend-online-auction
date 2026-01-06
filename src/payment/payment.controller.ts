@@ -61,13 +61,23 @@ export class PaymentController{
         //     throw new BadRequestException('Auction is not completed yet');
         // }
 
-        if (!product.winnerId || product.winnerId !== user.id) {
+        // Determine if this is a Buy Now or Auction Win payment
+        const isBuyNow = body.isBuyNow && product.buyNowPrice;
+        const finalAmount = isBuyNow ? product.buyNowPrice! : product.currentPrice;
+
+        // For auction (not Buy Now), must be the winner
+        if (!isBuyNow && (!product.winnerId || product.winnerId !== user.id)) {
             throw new BadRequestException('You are not the winner of this auction');
+        }
+
+        // For Buy Now, product must still be active
+        if (isBuyNow && product.status !== 'ACTIVE') {
+            throw new BadRequestException('Product is no longer available for Buy Now');
         }
 
             // Chuyển VND sang USD (1 USD = 24,000 VND)
         const exchangeRate = 24000;
-        const amountInUSD = product.currentPrice / exchangeRate;
+        const amountInUSD = finalAmount / exchangeRate;
 
         const order = await this.paymentService.createOrder(
         amountInUSD,
@@ -82,8 +92,9 @@ export class PaymentController{
         orderId: order.id,
         approvalUrl: approvalUrl,
         amount: amountInUSD,
-        amountVND: product.currentPrice,
+        amountVND: finalAmount,
         productName: product.name,
+        isBuyNow: isBuyNow,
         };
     }
 
@@ -134,6 +145,7 @@ export class PaymentController{
                     orderId,
                     transactionId,
                     amount,
+                    user.id, // Pass buyer ID
                 );
 
                 return {

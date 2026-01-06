@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsNotEmpty, IsNumber, IsString, Min, IsBoolean, IsOptional } from "class-validator";
+import { IsNotEmpty, IsNumber, IsString, Min, IsBoolean, IsOptional, IsPostalCode, IsPositive } from "class-validator";
 
 export class PlaceBidDto{
     @ApiProperty({ example: 'product-123', description: 'The ID of the product to place a bid on' })
@@ -22,4 +22,23 @@ export class PlaceBidDto{
     @IsBoolean()
     @IsOptional()
     confirmed?: boolean;
+
+    @ApiProperty({ 
+        description: 'Maximum amount willing to pay for auto-bidding',
+        example: 20000000,
+        required: false
+    })
+    @IsOptional()
+    @IsNumber()
+    @IsPositive()
+    maxAmount?:number;
+
+    @ApiProperty({ 
+        description: 'Deprecated: Backend automatically determines this from maxAmount. This field is ignored.',
+        example: true,
+        required: false
+    })
+    @IsOptional()
+    @IsBoolean()
+    isProxy?: boolean;
 }
