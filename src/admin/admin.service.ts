@@ -353,8 +353,8 @@ export class AdminService {
           (sum, p) =>
             sum +
             (Array.isArray(p.Order)
-              ? p.Order.reduce((orderSum, o) => orderSum + (o.paymentAmount ?? 0), 0)
-              : (p.Order?.paymentAmount ?? 0)),
+              ? p.Order.reduce((orderSum, o) => orderSum + (o.paymentAmount || 0), 0)
+              : 0),
           0,
         ),
       }))

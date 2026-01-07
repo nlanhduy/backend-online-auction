@@ -123,7 +123,7 @@ export class BidsService {
     placeBidDto: PlaceBidDto, 
     userId: string
   ): Promise<BidResponseDto> {
-    const { productId, amount, confirmed } = placeBidDto;
+    const { productId, amount, maxAmount, confirmed } = placeBidDto;
 
     // Validate bid
     const validation = await this.validateBid(productId, userId);
@@ -146,11 +146,94 @@ export class BidsService {
       );
     }
 
-    // Create new bid and update currentPrice
-    const [bid, updatedProduct] = await this.prisma.$transaction([
-      this.prisma.bid.create({
+    // Validate maxAmount nếu có
+    if (maxAmount !== undefined && maxAmount !== null) {
+      if (maxAmount < amount) {
+        throw new BadRequestException(
+          'Max amount must be greater than or equal to bid amount'
+        );
+      }
+    }
+
+    // Xử lý trong transaction
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Lấy product với thông tin hiện tại
+      const product = await tx.product.findUnique({
+        where: { id: productId },
+        select: {
+          id: true,
+          name: true,
+          currentPrice: true,
+          priceStep: true,
+          winnerId: true,
+        }
+      });
+
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
+
+      // 2. Tìm bid với maxAmount cao nhất từ người khác (không bị rejected)
+      const competitorMaxBid = await tx.bid.findFirst({
+        where: {
+          productId,
+          userId: { not: userId },
+          rejected: false,
+          maxAmount: { not: null }
+        },
+        orderBy: [
+          { maxAmount: 'desc' },
+          { createdAt: 'asc' }
+        ]
+      });
+
+      // 3. Tính toán giá cuối cùng
+      let finalAmount = amount;
+      let shouldCreateCounterBid = false;
+      let counterBidAmount: number | null = null;
+      let counterBidUserId: string | null = null;
+
+      const isAutoBid = maxAmount !== undefined && maxAmount !== null;
+
+      if (isAutoBid && competitorMaxBid?.maxAmount) {
+        // Logic đấu giá tự động khi cả 2 đều có maxAmount
+        if (maxAmount > competitorMaxBid.maxAmount) {
+          // User thắng: đặt giá cao hơn maxAmount của đối thủ 1 bước giá
+          finalAmount = Math.min(
+            competitorMaxBid.maxAmount + product.priceStep,
+            maxAmount
+          );
+        } else if (maxAmount === competitorMaxBid.maxAmount) {
+          // Ngang nhau: người đặt trước thắng
+          throw new BadRequestException(
+            'Someone already placed the same maximum bid before you'
+          );
+        } else {
+          // User thua: đối thủ sẽ counter bid
+          finalAmount = maxAmount;
+          shouldCreateCounterBid = true;
+          counterBidAmount = Math.min(
+            maxAmount + product.priceStep,
+            competitorMaxBid.maxAmount
+          );
+          counterBidUserId = competitorMaxBid.userId;
+        }
+      } else if (!isAutoBid && competitorMaxBid?.maxAmount && competitorMaxBid.maxAmount >= amount) {
+        // User không dùng auto bid nhưng đối thủ có auto bid và còn budget
+        shouldCreateCounterBid = true;
+        counterBidAmount = Math.min(
+          amount + product.priceStep,
+          competitorMaxBid.maxAmount
+        );
+        counterBidUserId = competitorMaxBid.userId;
+      }
+
+      // 4. Tạo bid của user
+      const newBid = await tx.bid.create({
         data: {
-          amount,
+          amount: finalAmount,
+          maxAmount: maxAmount,
+          isProxy: isAutoBid,
           productId,
           userId,
         },
@@ -161,31 +244,59 @@ export class BidsService {
               fullName: true,
             },
           },
-          product: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
         },
-      }),
-      this.prisma.product.update({
+      });
+
+      // 5. Cập nhật product và xử lý counter bid nếu cần
+      let finalWinnerId = userId;
+      let finalPrice = finalAmount;
+
+      if (shouldCreateCounterBid && counterBidUserId && counterBidAmount) {
+        // Tạo counter bid tự động
+        await tx.bid.create({
+          data: {
+            amount: counterBidAmount,
+            maxAmount: competitorMaxBid!.maxAmount,
+            isProxy: true,
+            productId,
+            userId: counterBidUserId,
+          },
+        });
+
+        finalWinnerId = counterBidUserId;
+        finalPrice = counterBidAmount;
+      }
+
+      // 6. Cập nhật product với winnerId và currentPrice
+      await tx.product.update({
         where: { id: productId },
         data: {
-          currentPrice: amount,
+          currentPrice: finalPrice,
+          winnerId: finalWinnerId,
         },
-      }),
-    ]);
+      });
 
-    return {
-      id: bid.id,
-      amount: bid.amount.toString(),
-      productId: bid.productId,
-      userId: bid.userId,
-      userName: bid.user.fullName,
-      createdAt: bid.createdAt.toISOString(),
-      message: `Successfully placed a bid of ${amount.toLocaleString('vi-VN')} VND for the product "${bid.product.name}"`,
-    };
+      // 7. Return response
+      const isWinning = finalWinnerId === userId;
+
+      return {
+        id: newBid.id,
+        amount: newBid.amount.toString(),
+        maxAmount: newBid.maxAmount?.toString(),
+        isProxy: newBid.isProxy,
+        productId: newBid.productId,
+        userId: newBid.userId,
+        userName: newBid.user.fullName,
+        createdAt: newBid.createdAt.toISOString(),
+        isWinning,
+        currentPrice: finalPrice.toString(),
+        message: isWinning
+          ? isAutoBid
+            ? `Đấu giá tự động đã kích hoạt! Bạn đang thắng với giá ${finalPrice.toLocaleString('vi-VN')} VND. Hệ thống sẽ tự động tăng giá cho bạn nếu có người khác đấu giá (tối đa: ${maxAmount.toLocaleString('vi-VN')} VND)`
+            : `Đặt giá thành công ${amount.toLocaleString('vi-VN')} VND. Bạn đang dẫn đầu!`
+          : `Giá đặt của bạn ${newBid.amount.toLocaleString('vi-VN')} VND đã bị vượt qua bởi đấu giá tự động. Giá hiện tại: ${finalPrice.toLocaleString('vi-VN')} VND`,
+      };
+    });
   }
 
   
@@ -196,7 +307,7 @@ export class BidsService {
     })
 
     const bids=await this.prisma.bid.findMany({
-        where:{productId},
+        where:{productId, rejected: false},
         include:{
             user:{
                 select:{
@@ -215,20 +326,77 @@ export class BidsService {
 
     // Check if user is seller or admin
     const isSeller=product?.sellerId===requestingUserId;
-    return bids.map(bid=>{
-        const shouldMask=!isSeller;
-        return {
-            id: bid.id,
-            amount: bid.amount.toString(),
-            createdAt: bid.createdAt,
-            rejected: bid.rejected,
-            user:{
-                id: bid.user.id,
-                fullName: shouldMask?maskFullName(bid.user.fullName):bid.user.fullName,
-            }
-        }
-    })
+    return bids.map(bid => {
+    const shouldMask = !isSeller && bid.userId !== requestingUserId;
+    const isOwnBid = bid.userId === requestingUserId;
+    
+    return {
+        id: bid.id,
+        amount: bid.amount.toString(),
+        maxAmount: isOwnBid ? bid.maxAmount?.toString() : undefined, // Chỉ show maxAmount cho chính user
+        isProxy: bid.isProxy,
+        createdAt: bid.createdAt,
+        rejected: bid.rejected,
+        user: {
+          id: bid.user.id,
+          fullName: shouldMask ? maskFullName(bid.user.fullName) : bid.user.fullName,
+        },
+        bidType: bid.isProxy ? 'auto' : 'manual', // Distinct bid type
+      };
+    });
   }
+
+  async getMyCurrentBid(productId: string, userId: string) {
+    // Lấy bid cao nhất của user cho product này
+    const myBid = await this.prisma.bid.findFirst({
+      where: {
+        productId,
+        userId,
+        rejected: false,
+      },
+      orderBy: [
+        { amount: 'desc' },
+        { createdAt: 'desc' }
+      ],
+      include: {
+        product: {
+          select: {
+            currentPrice: true,
+            winnerId: true,
+          }
+        }
+      }
+    });
+
+    if (!myBid) {
+      return null;
+    }
+
+    const isWinning = myBid.product.winnerId === userId;
+    const hasMaxAmount = myBid.maxAmount !== null;
+    
+    let status: 'winning' | 'losing' | 'outbid' = 'losing';
+    if (isWinning) {
+      status = 'winning';
+    } else if (hasMaxAmount && myBid.maxAmount! >= myBid.product.currentPrice) {
+      status = 'outbid'; // Vẫn còn budget để auto bid
+    }
+
+    return {
+      id: myBid.id,
+      amount: myBid.amount,
+      maxAmount: myBid.maxAmount,
+      isProxy: myBid.isProxy,
+      isWinning,
+      status,
+      currentPrice: myBid.product.currentPrice,
+      remainingBudget: hasMaxAmount 
+        ? Math.max(0, myBid.maxAmount! - myBid.product.currentPrice)
+        : 0,
+      createdAt: myBid.createdAt,
+    };
+  }
+
 } // Added business logic: seller and admin can see fullName
 
 

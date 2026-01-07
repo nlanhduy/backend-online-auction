@@ -36,11 +36,12 @@ import { SearchResponseDto } from './dto/search-response.dto';
 import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+import { BidsService } from 'src/bids/bids.service';
 
 @ApiTags('products')
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService, private readonly bidsService: BidsService) {}
 
   // ==================== Public Routes ====================
 
@@ -220,6 +221,16 @@ export class ProductsController {
   async getRelatedProducts(@Param('id') id: string): Promise<Product[]> {
     return this.productsService.findRelatedProducts(id);
   }
+
+
+  @Get('products/:productId/my-bid')
+  async getMyCurrentBid(
+    @Param('productId') productId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.bidsService.getMyCurrentBid(productId, user.id);
+  }
+
   // ==================== Protected Routes (SELLER/ADMIN) ====================
 
   @Post()

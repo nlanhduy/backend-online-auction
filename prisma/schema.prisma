@@ -132,11 +132,15 @@ model Bid {
   userId    String
   productId String
   rejected  Boolean  @default(false)
+  maxAmount Float?
+  isProxy   Boolean  @default(false)
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([productId])
+  @@index([productId, maxAmount])
+  @@index([productId, rejected, maxAmount])
 }
 
 model FavoriteProduct {
