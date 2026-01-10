@@ -11,7 +11,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 
 @Module({
   imports: [
@@ -24,7 +25,6 @@ import { JwtStrategy, RefreshTokenStrategy } from './strategies/jwt.strategy';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),
         signOptions: {
-          // 1 hour
           expiresIn: '1h',
         },
       }),

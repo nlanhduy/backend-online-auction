@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
+import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
-import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -74,21 +75,22 @@ export class ProductsController {
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get product details by ID (Public)',
-    description: 'Smart multi-purpose endpoint that adapts response based on product status and user role:\n\n' +
-    'ACTIVE Product (Auction in progress):\n' +
-    '  → Returns normal product details for everyone\n\n' +
-    'COMPLETED Product (Auction ended):\n' +
-    '  → Buyer/Seller (authenticated): Returns full order info including shipping, tracking, payment status. Frontend shows Order Management UI\n' +
-    '  → Other users: Returns basic info with "Auction ended" message. Hides sensitive order details\n\n' +
-    'Response includes:\n' +
-    '  • viewType: "ORDER_FULFILLMENT" | "AUCTION_ENDED" | undefined\n' +
-    '  • order: Full order object (only for buyer/seller on completed products)\n\n' +
-    'Frontend usage: Check viewType to determine which UI to render (Product Detail vs Order Management vs Ended Message)'
+    description:
+      'Smart multi-purpose endpoint that adapts response based on product status and user role:\n\n' +
+      'ACTIVE Product (Auction in progress):\n' +
+      '  → Returns normal product details for everyone\n\n' +
+      'COMPLETED Product (Auction ended):\n' +
+      '  → Buyer/Seller (authenticated): Returns full order info including shipping, tracking, payment status. Frontend shows Order Management UI\n' +
+      '  → Other users: Returns basic info with "Auction ended" message. Hides sensitive order details\n\n' +
+      'Response includes:\n' +
+      '  • viewType: "ORDER_FULFILLMENT" | "AUCTION_ENDED" | undefined\n' +
+      '  • order: Full order object (only for buyer/seller on completed products)\n\n' +
+      'Frontend usage: Check viewType to determine which UI to render (Product Detail vs Order Management vs Ended Message)',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Product found - Response varies based on status and user role',
     schema: {
       oneOf: [
@@ -100,8 +102,8 @@ export class ProductsController {
             currentPrice: 27500000,
             description: { content: 'Brand new...', createdAt: '2025-12-30T10:00:00Z' },
             status: 'ACTIVE',
-            seller: { id: 'seller-id', fullName: 'Tran Thi B' }
-          }
+            seller: { id: 'seller-id', fullName: 'Tran Thi B' },
+          },
         },
         {
           description: 'Completed product - Buyer/Seller view with ORDER INFO',
@@ -118,9 +120,9 @@ export class ProductsController {
               shippingAddress: '123 Nguyen Van Linh',
               paymentStatus: 'COMPLETED',
               buyer: { id: 'buyer-id', fullName: 'Nguyen Van A' },
-              seller: { id: 'seller-id', fullName: 'Tran Thi B' }
-            }
-          }
+              seller: { id: 'seller-id', fullName: 'Tran Thi B' },
+            },
+          },
         },
         {
           description: 'Completed product - Other users view (limited info)',
@@ -130,11 +132,11 @@ export class ProductsController {
             currentPrice: 27500000,
             status: 'COMPLETED',
             viewType: 'AUCTION_ENDED',
-            message: 'Sản phẩm đã kết thúc'
-          }
-        }
-      ]
-    }
+            message: 'Sản phẩm đã kết thúc',
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({ status: 404, description: 'Product not found' })
   findOne(@Param('id') id: string, @CurrentUser() user?: any) {
@@ -162,24 +164,25 @@ export class ProductsController {
 
   @ApiBearerAuth('access-token')
   @Get(':productId/review-permission')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Check review permission & order fulfillment status',
-    description: 'Multi-purpose endpoint for product post-auction status:\n\n' +
-    '1. Rating Permission: Check if user can rate (seller rate winner, winner rate seller)\n' +
-    '2. Order Status: Returns order fulfillment status to determine UI redirect\n\n' +
-    'Use Cases:\n' +
-    '  → Product detail page: Check if should show "Rate" button\n' +
-    '  → Navigation: Determine if redirect to Order Fulfillment page needed\n' +
-    '  → Order tracking: Get current order status (SHIPPING_INFO_PENDING, IN_TRANSIT, etc.)\n\n' +
-    'Response Fields:\n' +
-    '  • canRate: Can user submit rating?\n' +
-    '  • hasOrder: Is there an order created?\n' +
-    '  • orderStatus: Current order status (if exists)\n' +
-    '  • needsAction: Does order need user action? (e.g. buyer submit shipping, seller confirm)\n' +
-    '  • redirectToOrderPage: Should UI redirect to order fulfillment?'
+    description:
+      'Multi-purpose endpoint for product post-auction status:\n\n' +
+      '1. Rating Permission: Check if user can rate (seller rate winner, winner rate seller)\n' +
+      '2. Order Status: Returns order fulfillment status to determine UI redirect\n\n' +
+      'Use Cases:\n' +
+      '  → Product detail page: Check if should show "Rate" button\n' +
+      '  → Navigation: Determine if redirect to Order Fulfillment page needed\n' +
+      '  → Order tracking: Get current order status (SHIPPING_INFO_PENDING, IN_TRANSIT, etc.)\n\n' +
+      'Response Fields:\n' +
+      '  • canRate: Can user submit rating?\n' +
+      '  • hasOrder: Is there an order created?\n' +
+      '  • orderStatus: Current order status (if exists)\n' +
+      '  • needsAction: Does order need user action? (e.g. buyer submit shipping, seller confirm)\n' +
+      '  • redirectToOrderPage: Should UI redirect to order fulfillment?',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Permission and order status retrieved successfully',
     schema: {
       example: {
@@ -195,32 +198,27 @@ export class ProductsController {
           orderStatus: 'SHIPPING_INFO_PENDING',
           needsAction: true,
           actionRequired: 'Buyer needs to submit shipping address',
-          redirectToOrderPage: true
-        }
-      }
-    }
+          redirectToOrderPage: true,
+        },
+      },
+    },
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Product not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Product not found',
   })
-  async checkReviewPermission(
-    @Param('productId') productId: string,
-    @CurrentUser() user: any
-  ) {
+  async checkReviewPermission(@Param('productId') productId: string, @CurrentUser() user: any) {
     return this.productsService.checkReviewPermission(productId, user.id);
   }
 
-
   @Public()
   @Get(':id/related')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get related products by category (Public)',
-    description: 'Fetch products related to the given product based on category'})
-  @ApiResponse({status: 200, description: 'Related products retrieved successfully'})
-  async getRelatedProducts(
-    @Param('id') id: string
-  ): Promise<Product[]> {
+    description: 'Fetch products related to the given product based on category',
+  })
+  @ApiResponse({ status: 200, description: 'Related products retrieved successfully' })
+  async getRelatedProducts(@Param('id') id: string): Promise<Product[]> {
     return this.productsService.findRelatedProducts(id);
   }
 
@@ -298,7 +296,7 @@ export class ProductsController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Admin update product status/winner (ADMIN only)',
-    description: 'Admin can update product status (COMPLETED, CANCELED) and set winnerId'
+    description: 'Admin can update product status (COMPLETED, CANCELED) and set winnerId',
   })
   @ApiResponse({ status: 200, description: 'Product updated successfully' })
   @ApiResponse({ status: 404, description: 'Product not found' })

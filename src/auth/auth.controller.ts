@@ -59,10 +59,10 @@ export class AuthController {
 
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: false, // true in production with HTTPS
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/auth/refresh',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
     });
 
     const { refreshToken, ...rest } = tokens;
@@ -79,10 +79,10 @@ export class AuthController {
 
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/auth/refresh',
+      path: '/',
     });
 
     const { refreshToken, ...rest } = tokens;
@@ -108,8 +108,8 @@ export class AuthController {
 
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -130,8 +130,7 @@ export class AuthController {
     const userId = req.user['sub'];
     await this.authService.logout(userId);
 
-    // Clear refresh token cookie
-    res.clearCookie('refresh_token', { path: '/auth/refresh' });
+    res.clearCookie('refresh_token', { path: '/' });
 
     return { message: 'Logged out successfully' };
   }
@@ -145,6 +144,7 @@ export class AuthController {
   getProfile(@Req() req: express.Request) {
     return req.user;
   }
+
   @Public()
   @Get('google')
   @UseGuards(GoogleOAuthGuard)
@@ -170,7 +170,7 @@ export class AuthController {
 
       res.cookie('refresh_token', result.refreshToken, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
         path: '/',
@@ -210,8 +210,8 @@ export class AuthController {
 
     res.cookie('refresh_token', result.refreshToken, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });

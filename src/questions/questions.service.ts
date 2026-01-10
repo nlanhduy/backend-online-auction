@@ -39,17 +39,28 @@ export class QuestionsService {
 
     const question = await this.prisma.question.create({
       data: {
-        ...dto,
+        content: dto.content,
+        productId: dto.productId,
+        parentId: dto.parentId ?? null,
         userId,
       },
       include: {
         user: {
-          select: { id: true, fullName: true, email: true, role: true, avatar: true },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+            avatar: true,
+          },
         },
       },
     });
 
-    if (userId !== product.sellerId) {
+    const isSeller = userId === product.sellerId;
+    const isReply = Boolean(dto.parentId);
+
+    if (!isSeller) {
       this.mailService
         .sendQuestionNotification({
           ownerEmail: product.seller.email,
@@ -61,11 +72,47 @@ export class QuestionsService {
           userEmail: question.user.email,
           actionType: 'created',
           createdAt: question.createdAt,
+          context: 'BUYER_QUESTION',
         })
-        .catch((error) => {
-          // Log error but don't throw - email failure shouldn't break the API
-          console.error('Failed to send question notification email:', error);
-        });
+        .catch(console.error);
+    }
+
+    if (isSeller && isReply) {
+      const [bidders, questioners] = await Promise.all([
+        this.prisma.bid.findMany({
+          where: { productId: product.id, rejected: false },
+          select: { user: { select: { id: true, email: true, fullName: true } } },
+        }),
+        this.prisma.question.findMany({
+          where: { productId: product.id, isDeleted: false },
+          select: { user: { select: { id: true, email: true, fullName: true } } },
+        }),
+      ]);
+
+      const recipients = new Map<string, { email: string; fullName: string }>();
+
+      [...bidders, ...questioners].forEach(({ user }) => {
+        if (user.id !== product.sellerId) {
+          recipients.set(user.id, { email: user.email, fullName: user.fullName });
+        }
+      });
+
+      recipients.forEach((recipient) => {
+        this.mailService
+          .sendQuestionNotification({
+            ownerEmail: recipient.email,
+            ownerName: recipient.fullName,
+            productName: product.name,
+            productId: product.id,
+            questionContent: dto.content,
+            userName: product.seller.fullName,
+            userEmail: product.seller.email,
+            actionType: 'created',
+            createdAt: question.createdAt,
+            context: 'SELLER_REPLY',
+          })
+          .catch(console.error);
+      });
     }
 
     return question;
@@ -105,14 +152,21 @@ export class QuestionsService {
       },
       include: {
         user: {
-          select: { id: true, fullName: true, email: true, role: true, avatar: true },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+            avatar: true,
+          },
         },
       },
     });
 
-    // Send email notification if the user is not the product owner
-    if (userId !== question.product.sellerId) {
-      // Fire and forget - don't await to avoid blocking the response
+    const isSeller = userId === question.product.sellerId;
+    const isReply = Boolean(question.parentId);
+
+    if (!isSeller) {
       this.mailService
         .sendQuestionNotification({
           ownerEmail: question.product.seller.email,
@@ -125,11 +179,48 @@ export class QuestionsService {
           actionType: 'updated',
           createdAt: question.createdAt,
           updatedAt: updatedQuestion.updatedAt,
+          context: 'BUYER_QUESTION',
         })
-        .catch((error) => {
-          // Log error but don't throw - email failure shouldn't break the API
-          console.error('Failed to send question notification email:', error);
-        });
+        .catch(console.error);
+    }
+
+    if (isSeller && isReply) {
+      const [bidders, questioners] = await Promise.all([
+        this.prisma.bid.findMany({
+          where: { productId: question.product.id, rejected: false },
+          select: { user: { select: { id: true, email: true, fullName: true } } },
+        }),
+        this.prisma.question.findMany({
+          where: { productId: question.product.id, isDeleted: false },
+          select: { user: { select: { id: true, email: true, fullName: true } } },
+        }),
+      ]);
+
+      const recipients = new Map<string, { email: string; fullName: string }>();
+
+      [...bidders, ...questioners].forEach(({ user }) => {
+        if (user.id !== question.product.sellerId) {
+          recipients.set(user.id, { email: user.email, fullName: user.fullName });
+        }
+      });
+
+      recipients.forEach((recipient) => {
+        this.mailService
+          .sendQuestionNotification({
+            ownerEmail: recipient.email,
+            ownerName: recipient.fullName,
+            productName: question.product.name,
+            productId: question.product.id,
+            questionContent: dto.content,
+            userName: question.product.seller.fullName,
+            userEmail: question.product.seller.email,
+            actionType: 'updated',
+            createdAt: question.createdAt,
+            updatedAt: updatedQuestion.updatedAt,
+            context: 'SELLER_REPLY',
+          })
+          .catch(console.error);
+      });
     }
 
     return updatedQuestion;

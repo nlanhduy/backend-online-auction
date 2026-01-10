@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -107,13 +106,10 @@ export class AuthService {
       },
     });
 
-    // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, user.role);
 
-    // Save refresh token
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
-    // Clear OTP after successful registration (one-time use)
     this.otpService.clearRegistrationData(email);
 
     const { password: _, ...userWithoutPassword } = user;
@@ -180,17 +176,24 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    // Delete old refresh token
     await this.prisma.refreshToken.delete({
       where: { id: refreshTokenRecord.id },
     });
 
+    // Generate new tokens
     const tokens = await this.generateTokens(user.id, user.email, user.role);
 
+    // Save new refresh token
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
-    return tokens;
-  }
+    const { password: _, ...userWithoutPassword } = user;
 
+    return {
+      user: userWithoutPassword,
+      ...tokens,
+    };
+  }
   async logout(userId: string) {
     await this.prisma.refreshToken.deleteMany({
       where: { userId },

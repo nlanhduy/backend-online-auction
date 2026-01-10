@@ -61,9 +61,7 @@ export class ProductsService {
       );
     }
 
-    // Sử dụng transaction để tạo product và description history cùng lúc
     return this.prisma.$transaction(async (tx) => {
-      // 1. Tạo product
       const product = await tx.product.create({
         data: {
           ...createProductDto,
@@ -80,7 +78,6 @@ export class ProductsService {
         },
       });
 
-      // 2. Tạo description history entry đầu tiên
       await tx.descriptionHistory.create({
         data: {
           description: createProductDto.description,
@@ -179,7 +176,6 @@ export class ProductsService {
         category: true,
         descriptionHistories: {
           orderBy: { createdAt: 'desc' },
-          take: 1, // Chỉ lấy entry mới nhất
           select: {
             description: true,
             createdAt: true,
