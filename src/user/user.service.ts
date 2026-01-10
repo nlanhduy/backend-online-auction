@@ -5,6 +5,7 @@
 
 /* eslint-disable prettier/prettier */
 import * as bcrypt from 'bcrypt';
+import { generateRandomPassword } from 'src/common/utils/generate-password';
 import { MailService } from 'src/mail/mail.service';
 import { OtpService } from 'src/otp/otp.service';
 
@@ -237,7 +238,45 @@ export class UsersService {
       },
     });
 
-    return updatedUser;
+    if (updateUserDto.password) {
+      await this.mailService.sendResetPasswordEmail(updatedUser.email, updateUserDto.password);
+    }
+
+    // If the admin change password, the message will have a different message
+    const message = updateUserDto.password
+      ? 'User updated successfully. Please check user email for the new password.'
+      : 'User updated successfully.';
+    return {
+      ...updatedUser,
+      message,
+    };
+  }
+
+  // Reset password function. It will create a new password and send it to the user's email address.
+  async resetPassword(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    const newPassword = generateRandomPassword(12);
+    const hashedPassword = await this.hashPassword(newPassword);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    await this.mailService.sendResetPasswordEmail(user.email, newPassword);
+
+    return {
+      message: 'Password reset successfully. Please check user email for the new password.',
+    };
   }
 
   async changeName(userId: string, dto: ChangeNameDto) {

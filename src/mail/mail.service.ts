@@ -541,4 +541,71 @@ export class MailService {
     </html>
   `;
   }
+  async sendResetPasswordEmail(email: string, newPassword: string): Promise<void> {
+    const mailFrom = this.configService.get<string>('MAIL_FROM', 'noreply@yourapp.com');
+
+    const mailOptions = {
+      from: mailFrom,
+      to: email,
+      subject: 'Your Password Has Been Reset',
+      html: this.getResetPasswordTemplate(newPassword),
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Reset password email sent to ${email}. MessageId: ${info.messageId}`);
+    } catch (error) {
+      this.logger.error(`Failed to send reset password email to ${email}`, error);
+      throw new BadRequestException('Failed to send new password email. Please try again.');
+    }
+  }
+
+  private getResetPasswordTemplate(newPassword: string): string {
+    return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Reset Successful</title>
+  </head>
+  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #f8f9fa; border-radius: 10px; padding: 30px;">
+      <h1 style="color: #2c3e50; margin-bottom: 20px;">
+        Your Password Has Been Reset
+      </h1>
+
+      <p style="font-size: 16px; margin-bottom: 20px;">
+        Your password has been successfully reset. Please use the new password below to log in:
+      </p>
+
+      <div style="background-color: #ffffff; border: 2px dashed #2ecc71; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+        <p style="font-size: 14px; color: #7f8c8d; margin-bottom: 10px;">
+          Your new password:
+        </p>
+        <h2 style="color: #2ecc71; font-size: 28px; letter-spacing: 2px; margin: 0; font-weight: bold;">
+          ${newPassword}
+        </h2>
+      </div>
+
+      <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+        <p style="margin: 0; font-size: 14px; color: #856404;">
+          ⚠️ <strong>Security notice:</strong> Please log in and change your password immediately.
+        </p>
+      </div>
+
+      <p style="font-size: 14px; color: #7f8c8d; margin-top: 30px;">
+        If you did not request this password reset, please contact our support team immediately.
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
+
+      <p style="font-size: 12px; color: #95a5a6; margin: 0;">
+        This is an automated message, please do not reply.
+      </p>
+    </div>
+  </body>
+  </html>
+  `;
+  }
 }
