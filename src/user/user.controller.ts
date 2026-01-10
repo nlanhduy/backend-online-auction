@@ -406,13 +406,13 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  @Get(':id/rating')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get user rating by ID (ADMIN only)' })
+  @Get(':id/ratings')
+  @Public()
+  @ApiOperation({ summary: 'Get user rating by ID (PUBLIC)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Rating retrieved successfully' })
   getUserRating(@Param('id') id: string) {
-    return this.usersService.getUserRating(id);
+    return this.usersService.getUserRatingDetails(id);
   }
 
   @Patch(':id')

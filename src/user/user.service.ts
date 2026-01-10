@@ -764,6 +764,12 @@ export class UsersService {
     const totalRatings = user.positiveRating + user.negativeRating;
     const positivePercentage = totalRatings > 0 ? (user.positiveRating / totalRatings) * 100 : 0;
     return {
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        avatar: user.avatar,
+        profilePicture: user.profilePicture,
+      },
       positiveRating: user.positiveRating,
       negativeRating: user.negativeRating,
       totalRatings,

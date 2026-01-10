@@ -13,21 +13,29 @@ export class ValidateBidResponseDto {
   @ApiProperty({ description: 'Price step set by seller' })
   stepPrice: number;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'User rating score percentage (positive ratings / total ratings * 100)',
-    example: 80.5 
+    example: 80.5,
   })
   userRatingScore: number;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Total number of ratings received by user',
-    example: 10 
+    example: 10,
   })
   userTotalRatings: number;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Message explaining why user cannot bid (if canBid is false)',
-    required: false 
+    required: false,
   })
   message?: string;
+
+  //isSeller
+  @ApiProperty({ description: 'Whether the user is a seller' })
+  isSeller: boolean;
+
+  //isBidding
+  @ApiProperty({ description: 'Whether the user is currently bidding on the product' })
+  isBidding: boolean;
 }
