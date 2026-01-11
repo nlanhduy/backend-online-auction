@@ -58,7 +58,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         ON "Product"
         USING GIN ("searchVector");
       `);
-      console.log('Full-Text Search setup completed');
 
       // Update existing rows to populate searchVector
       const result = await this.$queryRaw<[{ count: bigint }]>`
@@ -66,7 +65,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `;
       const nullCount = Number(result[0]?.count || 0);
       if (nullCount > 0) {
-        console.log(`Updating ${nullCount} existing products to populate searchVector...`);
         await this.$executeRawUnsafe(`
           UPDATE "Product" 
           SET "searchVector" = 
@@ -74,7 +72,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             setweight(to_tsvector('english', COALESCE(description, '')), 'B')
           WHERE "searchVector" IS NULL;
         `);
-        console.log('Existing products updated with searchVector');
       }
     } catch (err) {
       console.error('Error adding searchVector column:', err);
