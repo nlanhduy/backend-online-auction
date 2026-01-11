@@ -425,6 +425,16 @@ export class UsersController {
     return this.usersService.update(id, updateUserDto);
   }
 
+  // Reset password for user Admin only
+  @Patch(':id/reset-password')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reset password for user by ID (ADMIN only)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  resetPassword(@Param('id') id: string) {
+    return this.usersService.resetPassword(id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)

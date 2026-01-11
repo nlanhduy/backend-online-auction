@@ -1,21 +1,18 @@
 import { Injectable } from '@nestjs/common';
+
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface UserRatingScore {
-  score: number; // Phần trăm rating dương (0-100)
-  total: number; // Tổng số lượng rating
-  positive: number; // Số lượng rating dương
-  negative: number; // Số lượng rating âm
+  score: number;
+  total: number;
+  positive: number;
+  negative: number;
 }
 
 @Injectable()
 export class RatingsService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Tính điểm rating của user dựa trên positiveRating và negativeRating
-   * Công thức: (positiveRating / (positiveRating + negativeRating)) * 100
-   */
   async getUserRatingScore(userId: string): Promise<UserRatingScore> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -42,11 +39,6 @@ export class RatingsService {
     return { score, total, positive, negative };
   }
 
-  /**
-   * Kiểm tra xem user có được phép bid hay không
-   * - Nếu chưa có đánh giá: phụ thuộc vào allowNewBidders của product
-   * - Nếu đã có đánh giá: điểm phải >= 80%
-   */
   async canUserBid(userId: string, productAllowNewBidders: boolean): Promise<boolean> {
     const { score, total } = await this.getUserRatingScore(userId);
 

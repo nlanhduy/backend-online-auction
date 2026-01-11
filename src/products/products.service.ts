@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { retry, take } from 'rxjs';
+import { MailService } from 'src/mail/mail.service';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
 import {
@@ -30,6 +31,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private systemSettingsService: SystemSettingsService,
+    private mailService: MailService,
   ) {}
   async create(createProductDto: CreateProductDto, sellerId: string) {
     const settings = await this.systemSettingsService.getSettings();
@@ -225,39 +227,23 @@ export class ProductsService {
       },
     };
 
-    // Nếu sản phẩm đã kết thúc (COMPLETED/CANCELED)
     if (product.status !== 'ACTIVE') {
-      // Debug logging
-      console.log('🔍 Debug Order Info:');
-      console.log('- userId:', userId);
-      console.log('- product.winnerId:', product.winnerId);
-      console.log('- product.sellerId:', product.sellerId);
-      console.log('- order array:', order);
-
-      // Nếu có order và user là buyer hoặc seller -> trả về order info
       const orderData = order;
-      console.log('- orderData:', orderData);
-
       if (orderData && userId && (orderData.buyerId === userId || orderData.sellerId === userId)) {
-        console.log('✅ User is buyer/seller - returning ORDER_FULFILLMENT');
         return {
           ...result,
           order: orderData,
-          viewType: 'ORDER_FULFILLMENT', // Frontend dùng để hiển thị view phù hợp
+          viewType: 'ORDER_FULFILLMENT',
         };
       }
 
-      console.log('❌ No order or user not authorized - returning AUCTION_ENDED');
-
-      // Người dùng khác chỉ thấy thông báo đã kết thúc
       return {
         ...result,
         viewType: 'AUCTION_ENDED',
-        message: 'Sản phẩm đã kết thúc',
+        message: 'Auction has ended',
       };
     }
 
-    // Sản phẩm đang active thì trả về bình thường
     return {
       ...result,
       viewType: 'ACTIVE_AUCTION',
@@ -318,13 +304,7 @@ export class ProductsService {
       }
     }
 
-    // Kiểm tra xem description có thay đổi không
-    const isDescriptionChanged =
-      updateProductDto.description && updateProductDto.description !== existingProduct.description;
-
-    // Sử dụng transaction để update product và tạo history
     return this.prisma.$transaction(async (tx) => {
-      // 1. Update product
       const updatedProduct = await tx.product.update({
         where: { id },
         data: {
@@ -339,23 +319,30 @@ export class ProductsService {
         },
       });
 
-      // 2. Nếu description thay đổi, tạo history entry mới
-      if (isDescriptionChanged) {
-        await tx.descriptionHistory.create({
-          data: {
-            description: updateProductDto.description!,
-            productId: id,
-            createdBy: userId,
-          },
-        });
-      }
+      await tx.descriptionHistory.create({
+        data: {
+          description: updateProductDto.description!,
+          productId: id,
+          createdBy: userId,
+        },
+      });
+      // Find all users bidding on the product and send them an email
+      const biddersId = await tx.bid.findMany({
+        where: { productId: id },
+        select: { userId: true },
+      });
+
+      const bidders = await tx.user.findMany({
+        where: { id: { in: biddersId.map((bid) => bid.userId) } },
+      });
+
+      await this.mailService.sendProductUpdateEmail(updatedProduct, bidders);
 
       return updatedProduct;
     });
   }
 
   async getDescriptionHistory(productId: string): Promise<DescriptionHistoryResponseDto> {
-    // Kiểm tra product có tồn tại không
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
       select: {
@@ -368,7 +355,6 @@ export class ProductsService {
       throw new NotFoundException(`Product with id ${productId} not found`);
     }
 
-    // Lấy tất cả description history, sắp xếp từ mới nhất đến cũ nhất
     const historyRecords = await this.prisma.descriptionHistory.findMany({
       where: { productId },
       orderBy: { createdAt: 'desc' },
@@ -393,11 +379,6 @@ export class ProductsService {
     };
   }
 
-  // ==================== Description History CRUD ====================
-
-  /**
-   * Get single description history entry by ID
-   */
   async getDescriptionHistoryById(historyId: string): Promise<DescriptionHistoryDto> {
     const history = await this.prisma.descriptionHistory.findUnique({
       where: { id: historyId },
@@ -421,10 +402,6 @@ export class ProductsService {
     };
   }
 
-  /**
-   * Update description history entry
-   * Nếu update entry mới nhất, sẽ tự động update product description
-   */
   async updateDescriptionHistory(
     historyId: string,
     updateDto: UpdateDescriptionHistoryDto,
@@ -457,7 +434,6 @@ export class ProductsService {
       throw new ForbiddenException('You do not have permission to update this description history');
     }
 
-    // Kiểm tra xem đây có phải là entry mới nhất không
     const latestHistory = await this.prisma.descriptionHistory.findFirst({
       where: { productId: history.productId },
       orderBy: { createdAt: 'desc' },
@@ -466,7 +442,6 @@ export class ProductsService {
 
     const isLatestEntry = latestHistory?.id === historyId;
 
-    // Sử dụng transaction để update cả history và product (nếu là entry mới nhất)
     return this.prisma.$transaction(async (tx) => {
       // 1. Update description history
       const updated = await tx.descriptionHistory.update({
@@ -482,7 +457,6 @@ export class ProductsService {
         },
       });
 
-      // 2. Nếu đây là entry mới nhất, update product description
       if (isLatestEntry) {
         await tx.product.update({
           where: { id: history.productId },
@@ -568,7 +542,6 @@ export class ProductsService {
     return this.prisma.product.delete({ where: { id } });
   }
 
-  // find products for homepage
   async getHomepageProducts() {
     const now = new Date();
     // Query base
@@ -609,7 +582,6 @@ export class ProductsService {
       },
     };
 
-    // Top products ending soon
     const endingSoon = await this.prisma.product.findMany({
       where: {},
       select: baseSelect,
@@ -617,7 +589,6 @@ export class ProductsService {
       take: 5,
     });
 
-    // Top 5 products with most bids
     const mostBids = await this.prisma.product.findMany({
       where: {
         status: 'ACTIVE',
@@ -627,7 +598,7 @@ export class ProductsService {
       orderBy: [{ bids: { _count: 'desc' } }],
       take: 5,
     });
-    // Top 5 highest priced products
+
     const highestPriced = await this.prisma.product.findMany({
       where: {
         status: 'ACTIVE',
@@ -638,7 +609,6 @@ export class ProductsService {
       take: 5,
     });
 
-    // transform data to match DTO
     const transformProduct = (product: any) => ({
       id: product.id,
       name: product.name,
@@ -670,7 +640,6 @@ export class ProductsService {
       sortBy,
     } = searchProductDto;
 
-    // Check if FTS is available and query is provided
     const useFTS =
       query &&
       query.trim() !== '' &&
@@ -679,12 +648,10 @@ export class ProductsService {
     if (useFTS) {
       const ftsAvailable = await this.checkFTSAvailability();
       if (ftsAvailable) {
-        console.log('🚀 Using Full-Text Search');
         return this.fullTextSearch(searchProductDto);
       }
     }
 
-    console.log('📝 Using Traditional LIKE Search');
     return this.traditionalSearch(searchProductDto);
   }
 

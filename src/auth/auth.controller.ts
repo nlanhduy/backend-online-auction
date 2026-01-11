@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
@@ -18,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -29,6 +31,7 @@ import { RefreshTokenGuard } from './guards/refresh-token.guard';
 
 @ApiTags('auth')
 @Controller('auth')
+@Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 requests per 60 seconds
 export class AuthController {
   constructor(
     private readonly authService: AuthService,

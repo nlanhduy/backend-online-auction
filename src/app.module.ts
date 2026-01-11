@@ -1,7 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
@@ -27,10 +31,18 @@ import { UsersModule } from './user/user.module';
 
 @Module({
   imports: [
-    LoggerModule,
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
+    LoggerModule,
     PrismaModule,
     AuthModule,
     CategoriesModule,
@@ -40,14 +52,12 @@ import { UsersModule } from './user/user.module';
     QuestionsModule,
     OtpModule,
     MailModule,
-    ScheduleModule.forRoot(),
     SystemSettingsModule,
     BidsModule,
     PaymentModule,
     OrdersModule,
     AdminModule,
     ChatModule,
-    SystemSettingsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -56,10 +66,16 @@ import { UsersModule } from './user/user.module';
       provide: APP_INTERCEPTOR,
       useClass: HttpLoggerInterceptor,
     },
+
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

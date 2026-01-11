@@ -25,8 +25,6 @@ export class BidsService {
     private mailService: MailService,
   ) {}
 
-  // Validate if user can bid on a product
-  // return user if valid
   async validateBid(productId: string, userId: string): Promise<ValidateBidResponseDto> {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -53,7 +51,6 @@ export class BidsService {
       throw new NotFoundException('Product not found');
     }
 
-    // Check if the user is the seller
     if (product.sellerId === userId) {
       return {
         canBid: false,
@@ -98,7 +95,6 @@ export class BidsService {
       };
     }
 
-    // Check bid time
     if (new Date() > product.endTime) {
       return {
         canBid: false,
@@ -127,20 +123,20 @@ export class BidsService {
       };
     }
 
-    // Check if user can bid
     const canBid = await this.ratingsService.canUserBid(userId, product.allowNewBidders);
     const { score, total } = await this.ratingsService.getUserRatingScore(userId);
 
-    // Tính giá đề xuất (giá hiện tại + bước giá)
     const suggestedAmount = product.currentPrice + product.priceStep;
 
     let message = '';
     if (!canBid) {
       if (total === 0) {
         message =
-          'You have no ratings. The seller does not allow new bidders to participate in bidding for this product.';
+          'You do not have any ratings yet. The seller does not allow new bidders to participate in this auction.';
       } else {
-        message = `Your rating score is ${score.toFixed(1)}% (${total} ratings). You need a rating score of ≥ 80% to participate in bidding.`;
+        message = `Your rating score is ${score.toFixed(
+          1,
+        )}% (${total} ratings). You need a rating score of at least 80% to participate in this auction.`;
       }
     }
 
@@ -177,19 +173,16 @@ export class BidsService {
       throw new ForbiddenException(validation.message);
     }
 
-    // Check confirmation
     if (!confirmed) {
       throw new BadRequestException('Please confirm before placing a bid');
     }
 
-    // Check bid amount
     if (amount < validation.suggestedAmount) {
       throw new BadRequestException(
-        `Bid amount must be ≥ ${validation.suggestedAmount.toLocaleString('vi-VN')} VND (current price + step price)`,
+        `Bid amount must be ≥ ${validation.suggestedAmount.toLocaleString('en-US')} VND (current price + step price)`,
       );
     }
 
-    // Validate maxAmount nếu có
     if (maxAmount !== undefined && maxAmount !== null) {
       if (maxAmount < amount) {
         throw new BadRequestException('Max amount must be greater than or equal to bid amount');
@@ -244,7 +237,6 @@ export class BidsService {
           // User thắng: Current price = max của competitor (người thua)
           finalAmount = competitorMaxBid.maxAmount;
         } else if (maxAmount === competitorMaxBid.maxAmount) {
-          // Ngang nhau: người đặt trước thắng
           throw new BadRequestException('Someone already placed the same maximum bid before you');
         } else {
           // User thua: Current price = max của user (người thua)
@@ -273,7 +265,6 @@ export class BidsService {
         finalAmount = product.currentPrice;
       }
 
-      // 4. Tạo bid của user
       const newBid = await tx.bid.create({
         data: {
           amount: finalAmount,
@@ -292,12 +283,10 @@ export class BidsService {
         },
       });
 
-      // 5. Cập nhật product và xử lý counter bid nếu cần
       let finalWinnerId = userId;
       let finalPrice = finalAmount;
 
       if (shouldCreateCounterBid && counterBidUserId && counterBidAmount) {
-        // Tạo counter bid tự động
         await tx.bid.create({
           data: {
             amount: counterBidAmount,
@@ -312,7 +301,6 @@ export class BidsService {
         finalPrice = counterBidAmount;
       }
 
-      // 6. Cập nhật product với winnerId và currentPrice
       await tx.product.update({
         where: { id: productId },
         data: {
@@ -423,7 +411,6 @@ export class BidsService {
       },
     });
 
-    // Check if user is seller or admin
     const isSeller = product?.sellerId === requestingUserId;
     return bids.map((bid) => {
       const shouldMask = !isSeller && bid.userId !== requestingUserId;
@@ -432,7 +419,7 @@ export class BidsService {
       return {
         id: bid.id,
         amount: bid.amount.toString(),
-        maxAmount: isOwnBid ? bid.maxAmount?.toString() : undefined, // Chỉ show maxAmount cho chính user
+        maxAmount: isOwnBid ? bid.maxAmount?.toString() : undefined,
         isProxy: bid.isProxy,
         createdAt: bid.createdAt,
         rejected: bid.rejected,
@@ -440,13 +427,12 @@ export class BidsService {
           id: bid.user.id,
           fullName: shouldMask ? maskFullName(bid.user.fullName) : bid.user.fullName,
         },
-        bidType: bid.isProxy ? 'auto' : 'manual', // Distinct bid type
+        bidType: bid.isProxy ? 'auto' : 'manual',
       };
     });
   }
 
   async getMyCurrentBid(productId: string, userId: string) {
-    // Lấy bid cao nhất của user cho product này
     const myBid = await this.prisma.bid.findFirst({
       where: {
         productId,
@@ -475,7 +461,7 @@ export class BidsService {
     if (isWinning) {
       status = 'winning';
     } else if (hasMaxAmount && myBid.maxAmount! >= myBid.product.currentPrice) {
-      status = 'outbid'; // Vẫn còn budget để auto bid
+      status = 'outbid';
     }
 
     return {
@@ -492,4 +478,4 @@ export class BidsService {
       createdAt: myBid.createdAt,
     };
   }
-} // Added business logic: seller and admin can see fullName
+}

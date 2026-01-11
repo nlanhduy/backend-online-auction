@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
 import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
+import { BidsService } from 'src/bids/bids.service';
 import { CurrentUser } from 'src/common/decorators/currentUser.decorator';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
@@ -36,13 +37,15 @@ import { SearchResponseDto } from './dto/search-response.dto';
 import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
-import { BidsService } from 'src/bids/bids.service';
 import { ManageBidderDto, DeniedBiddersResponseDto, ActiveBiddersResponseDto } from './dto/manage-bidder.dto';
 
 @ApiTags('products')
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService, private readonly bidsService: BidsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly bidsService: BidsService,
+  ) {}
 
   // ==================== Public Routes ====================
 
@@ -223,12 +226,8 @@ export class ProductsController {
     return this.productsService.findRelatedProducts(id);
   }
 
-
   @Get('products/:productId/my-bid')
-  async getMyCurrentBid(
-    @Param('productId') productId: string,
-    @CurrentUser() user: any,
-  ) {
+  async getMyCurrentBid(@Param('productId') productId: string, @CurrentUser() user: any) {
     return this.bidsService.getMyCurrentBid(productId, user.id);
   }
 

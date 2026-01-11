@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 
@@ -6,15 +7,11 @@ import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 export class SystemSettingsService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Lấy cấu hình hiện tại (hoặc tạo mới nếu chưa có)
-   */
   async getSettings() {
     let settings = await this.prisma.systemSettings.findFirst({
       orderBy: { updatedAt: 'desc' },
     });
 
-    // Nếu chưa có settings, tạo mới với giá trị mặc định
     if (!settings) {
       settings = await this.prisma.systemSettings.create({
         data: {
@@ -29,9 +26,6 @@ export class SystemSettingsService {
     return settings;
   }
 
-  /**
-   * Cập nhật cấu hình (chỉ ADMIN)
-   */
   async updateSettings(dto: UpdateSystemSettingsDto, adminId: string) {
     const settings = await this.getSettings();
 
@@ -44,9 +38,6 @@ export class SystemSettingsService {
     });
   }
 
-  /**
-   * Kiểm tra xem product có nên được gia hạn không
-   */
   async checkAutoExtension(
     productId: string,
     bidTime: Date,
@@ -71,17 +62,14 @@ export class SystemSettingsService {
       return { shouldExtend: false, reason: 'Product not found' };
     }
 
-    // Kiểm tra: có bật auto-extend không?
     if (!product.autoExtend) {
       return { shouldExtend: false, reason: 'Auto-extend disabled' };
     }
 
-    // Kiểm tra: product phải ACTIVE
     if (product.status !== 'ACTIVE') {
       return { shouldExtend: false, reason: 'Product not active' };
     }
 
-    // Kiểm tra: đã vượt quá số lần gia hạn chưa?
     if (settings.maxExtensions && product.extendedCount >= settings.maxExtensions) {
       return {
         shouldExtend: false,
@@ -89,7 +77,6 @@ export class SystemSettingsService {
       };
     }
 
-    // Kiểm tra: bid có trong khoảng threshold không?
     const timeUntilEnd = product.endTime.getTime() - bidTime.getTime();
     const thresholdMs = settings.autoExtendThresholdMinutes * 60 * 1000;
 
@@ -100,7 +87,6 @@ export class SystemSettingsService {
       };
     }
 
-    // Tính endTime mới
     const extensionMs = settings.extensionDuration * 60 * 1000;
     const newEndTime = new Date(product.endTime.getTime() + extensionMs);
 
@@ -111,9 +97,6 @@ export class SystemSettingsService {
     };
   }
 
-  /**
-   * Thực hiện gia hạn product
-   */
   async extendProduct(productId: string, newEndTime: Date) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -125,7 +108,6 @@ export class SystemSettingsService {
       data: {
         endTime: newEndTime,
         extendedCount: { increment: 1 },
-        // Lưu originalEndTime nếu đây là lần gia hạn đầu tiên
         originalEndTime: product?.originalEndTime || product?.endTime,
       },
     });
