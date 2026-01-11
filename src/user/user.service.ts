@@ -105,14 +105,20 @@ export class UsersService {
   }
 
   async getAllUserProducts(userId: string, getUserProductDto: GetUserProductDto) {
-    const { page = 1, limit = 10 } = getUserProductDto;
+    const { page = 1, limit = 10, status } = getUserProductDto;
 
     const skip = (page - 1) * limit;
     const now = new Date();
 
+    // Build where clause
+    const where: any = { sellerId: userId };
+    if (status) {
+      where.status = status;
+    }
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.product.findMany({
-        where: { sellerId: userId },
+        where,
         skip,
         take: limit,
         orderBy: {
@@ -147,7 +153,7 @@ export class UsersService {
       }),
 
       this.prisma.product.count({
-        where: { sellerId: userId },
+        where,
       }),
     ]);
 
