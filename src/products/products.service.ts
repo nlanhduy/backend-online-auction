@@ -708,11 +708,11 @@ export class ProductsService {
           },
         });
       }
-      
+
       if (categoryId && categoryId.trim() !== '') {
         conditions.push({ categoryId });
       }
-      
+
       if (conditions.length > 0) {
         where.OR = conditions;
       }
@@ -883,7 +883,6 @@ export class ProductsService {
     }
     // Convert query to tsquery format with unaccent for Vietnamese support
     const tsquery = query.trim().split(/\s+/).join(' & ');
-    console.log('📊 FTS Query:', { query, tsquery, now: now.toISOString() });
 
     // Build WHERE conditions
     const baseConditions: string[] = [`p.status = 'ACTIVE'`, `p."endTime" > $1`];
@@ -922,7 +921,6 @@ export class ProductsService {
     if (searchConditions.length > 0) {
       allConditions.push(...searchConditions);
     }
-    
     const whereClause = allConditions.join(' AND ');
 
     // Build ORDER BY
@@ -970,11 +968,7 @@ export class ProductsService {
 
     params.push(limitNum, skip);
 
-    console.log('🔍 SQL:', sql);
-    console.log('📝 Params:', params);
-
     const products = await this.prisma.$queryRawUnsafe<any[]>(sql, ...params);
-    console.log('✅ Found products:', products.length);
 
     // Count query
     const countSql = `
@@ -1022,7 +1016,6 @@ export class ProductsService {
         ) as exists;
       `;
       const isAvailable = result[0]?.exists || false;
-      console.log(isAvailable ? 'Full-Text Search enabled' : 'Using fallback LIKE search');
       return isAvailable;
     } catch {
       return false;
@@ -1561,10 +1554,7 @@ export class ProductsService {
           productId,
           rejected: false,
         },
-        orderBy: [
-          { amount: 'desc' },
-          { createdAt: 'asc' },
-        ],
+        orderBy: [{ amount: 'desc' }, { createdAt: 'asc' }],
         include: {
           user: {
             select: { id: true, fullName: true },
@@ -1577,7 +1567,10 @@ export class ProductsService {
         where: { id: productId },
         data: {
           winnerId: newTopBid?.userId || null,
-          currentPrice: newTopBid?.amount || product.status === 'ACTIVE' ? await this.getInitialPrice(productId) : 0,
+          currentPrice:
+            newTopBid?.amount || product.status === 'ACTIVE'
+              ? await this.getInitialPrice(productId)
+              : 0,
         },
         select: {
           id: true,
@@ -1686,20 +1679,20 @@ export class ProductsService {
           },
         },
       },
-      orderBy: [
-        { amount: 'desc' },
-        { createdAt: 'asc' },
-      ],
+      orderBy: [{ amount: 'desc' }, { createdAt: 'asc' }],
     });
 
     // Group by user and get stats
-    const bidderMap = new Map<string, {
-      id: string;
-      fullName: string;
-      highestBid: number;
-      totalBids: number;
-      lastBidTime: Date;
-    }>();
+    const bidderMap = new Map<
+      string,
+      {
+        id: string;
+        fullName: string;
+        highestBid: number;
+        totalBids: number;
+        lastBidTime: Date;
+      }
+    >();
 
     bids.forEach((bid) => {
       const existing = bidderMap.get(bid.userId);

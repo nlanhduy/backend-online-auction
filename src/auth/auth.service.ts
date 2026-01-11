@@ -211,7 +211,6 @@ export class AuthService {
     }
 
     const secretKey = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
-    console.log(secretKey);
     if (!secretKey) {
       throw new Error('RECAPTCHA_SECRET_KEY is not configured');
     }
@@ -223,7 +222,6 @@ export class AuthService {
           response: recaptchaToken,
         },
       });
-      console.log({ response });
 
       return response.data.success === true;
     } catch (error) {
