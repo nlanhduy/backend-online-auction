@@ -37,7 +37,7 @@ model User {
   refreshTokens              RefreshToken[]
   upgradeRequests            SellerUpgradeRequest[]
   systemSettingsUpdated      SystemSettings[]
-  messages Message[]
+  messages                   Message[]
 }
 
 model RefreshToken {
@@ -98,6 +98,7 @@ model Product {
   searchVector         Unsupported("tsvector")?
   mainImage            String?
   allowNewBidders      Boolean                  @default(true)
+  deniedBidders        String[]                 @default([])
   bids                 Bid[]
   favoriteBy           FavoriteProduct[]
   Order                Order?
@@ -248,7 +249,7 @@ model Order {
   User_Order_sellerIdToUser           User          @relation("Order_sellerIdToUser", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   Rating_Order_sellerRatingIdToRating Rating?       @relation("Order_sellerRatingIdToRating", fields: [sellerRatingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  chat                                Chat?
+  chat Chat?
 
   @@index([buyerId])
   @@index([sellerId])
@@ -278,7 +279,7 @@ model Message {
 
   @@index([chatId, createdAt])
   @@index([senderId])
-} 
+}
 
 enum UserRole {
   BIDDER

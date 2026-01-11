@@ -900,13 +900,54 @@ export class UsersService {
       distinct: ['productId'],
       select: { productId: true },
     });
+
+    // Get max bid for each product to calculate status
+    const productsWithStatus = await Promise.all(
+      bids.map(async (bid) => {
+        // Get user's highest bid with maxAmount
+        const myMaxBid = await this.prisma.bid.findFirst({
+          where: {
+            productId: bid.productId,
+            userId,
+          },
+          orderBy: [{ maxAmount: 'desc' }, { amount: 'desc' }],
+          select: {
+            amount: true,
+            maxAmount: true,
+            isProxy: true,
+          },
+        });
+
+        const isWinning = bid.product.winnerId === userId;
+        const currentPrice = bid.product.currentPrice;
+        const myMaxAmount = myMaxBid?.maxAmount || myMaxBid?.amount || bid.amount;
+
+        // Determine status
+        let status: 'winning' | 'outbid' | 'losing' = 'losing';
+        if (isWinning) {
+          status = 'winning';
+        } else if (myMaxBid?.isProxy && myMaxAmount > currentPrice) {
+          status = 'outbid'; // Has auto-bid budget remaining
+        } else {
+          status = 'losing'; // Completely outbid
+        }
+
+        return {
+          bidId: bid.id,
+          myBidAmount: bid.amount,
+          myMaxBid: myMaxAmount,
+          hasAutoBid: myMaxBid?.isProxy || false,
+          bidTime: bid.createdAt,
+          isWinning,
+          status,
+          currentPrice,
+          product: bid.product,
+        };
+      }),
+    );
+
     return {
-      items: bids.map((bid) => ({
-        bidId: bid.id,
-        myBidAmount: bid.amount,
-        bidTime: bid.createdAt,
-        product: bid.product,
-      })),
+      items: productsWithStatus,
       total: total.length,
       page,
       limit,
@@ -1080,11 +1121,15 @@ export class UsersService {
       );
     }
 
-    // If user has already rated the receiver, prevent multiple ratings
+    // Check if user has already given a standalone rating (not linked to any order)
+    // Order-linked ratings are separate and managed through the order rating system
     const existingRating = await this.prisma.rating.findFirst({
       where: {
         giverId,
         receiverId,
+        // Only check for standalone ratings (not linked to any order)
+        Order_Order_buyerRatingIdToRating: null,
+        Order_Order_sellerRatingIdToRating: null,
       },
     });
 

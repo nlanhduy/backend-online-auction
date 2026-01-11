@@ -4,10 +4,12 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { BidResponseDto } from './dto/bid-response.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
 import { ValidateBidResponseDto } from './dto/validate-bid.dto';
@@ -15,9 +17,12 @@ import { RatingsService } from './ratings.service';
 
 @Injectable()
 export class BidsService {
+  private readonly logger = new Logger(BidsService.name);
+
   constructor(
     private prisma: PrismaService,
     private ratingsService: RatingsService,
+    private mailService: MailService,
   ) {}
 
   async validateBid(productId: string, userId: string): Promise<ValidateBidResponseDto> {
@@ -43,7 +48,7 @@ export class BidsService {
     const isBidding = Boolean(hasBid);
 
     if (!product) {
-      throw new NotFoundException('Product does not exist');
+      throw new NotFoundException('Product not found');
     }
 
     if (product.sellerId === userId) {
@@ -54,12 +59,28 @@ export class BidsService {
         stepPrice: product.priceStep,
         userRatingScore: 0,
         userTotalRatings: 0,
-        message: 'You cannot bid on your own product.',
+        message: 'You cannot bid on your own product',
         isSeller: true,
         isBidding: false,
       };
     }
 
+    // Check if user is denied by seller
+    if (product.deniedBidders && product.deniedBidders.includes(userId)) {
+      return {
+        canBid: false,
+        suggestedAmount: 0,
+        currentPrice: product.currentPrice,
+        stepPrice: product.priceStep,
+        userRatingScore: 0,
+        userTotalRatings: 0,
+        message: 'You are denied from bidding on this product by the seller',
+        isSeller: false,
+        isBidding: false,
+      };
+    }
+
+    // Check product status
     if (product.status !== 'ACTIVE') {
       return {
         canBid: false,
@@ -82,7 +103,7 @@ export class BidsService {
         stepPrice: product.priceStep,
         userRatingScore: 0,
         userTotalRatings: 0,
-        message: 'The auction has ended',
+        message: 'The bidding session has ended',
         isSeller: false,
         isBidding: false,
       };
@@ -96,7 +117,7 @@ export class BidsService {
         stepPrice: product.priceStep,
         userRatingScore: 0,
         userTotalRatings: 0,
-        message: 'The auction has not started yet',
+        message: 'The bidding session has not started yet',
         isSeller: false,
         isBidding: false,
       };
@@ -135,6 +156,17 @@ export class BidsService {
   async placeBid(placeBidDto: PlaceBidDto, userId: string): Promise<BidResponseDto> {
     const { productId, amount, maxAmount, confirmed } = placeBidDto;
 
+    // Variable to store outbid notification data outside transaction
+    let outbidEmailData: {
+      email: string;
+      bidderName: string;
+      productId: string;
+      productName: string;
+      currentPrice: number;
+      yourMaxBid: number;
+    } | null = null;
+
+    // Validate bid
     const validation = await this.validateBid(productId, userId);
 
     if (!validation.canBid) {
@@ -157,7 +189,9 @@ export class BidsService {
       }
     }
 
-    return await this.prisma.$transaction(async (tx) => {
+    // Xử lý trong transaction
+    const bidResult = await this.prisma.$transaction(async (tx) => {
+      // 1. Lấy product với thông tin hiện tại
       const product = await tx.product.findUnique({
         where: { id: productId },
         select: {
@@ -173,6 +207,10 @@ export class BidsService {
         throw new NotFoundException('Product not found');
       }
 
+      // Track previous winner for email notification
+      const previousWinnerId = product.winnerId;
+
+      // 2. Tìm bid với maxAmount cao nhất từ người khác (không bị rejected)
       const competitorMaxBid = await tx.bid.findFirst({
         where: {
           productId,
@@ -183,6 +221,9 @@ export class BidsService {
         orderBy: [{ maxAmount: 'desc' }, { createdAt: 'asc' }],
       });
 
+      // 3. Tính toán giá cuối cùng - PROXY BIDDING LOGIC
+      // Nguyên tắc: Current price = min(bidAmount, competitorMax)
+      // Winner luôn chỉ trả bằng max của loser (KHÔNG cộng step)
       let finalAmount = amount;
       let shouldCreateCounterBid = false;
       let counterBidAmount: number | null = null;
@@ -191,24 +232,37 @@ export class BidsService {
       const isAutoBid = maxAmount !== undefined && maxAmount !== null;
 
       if (isAutoBid && competitorMaxBid?.maxAmount) {
+        // Cả 2 đều có maxAmount - So sánh maxAmount
         if (maxAmount > competitorMaxBid.maxAmount) {
-          finalAmount = Math.min(competitorMaxBid.maxAmount + product.priceStep, maxAmount);
+          // User thắng: Current price = max của competitor (người thua)
+          finalAmount = competitorMaxBid.maxAmount;
         } else if (maxAmount === competitorMaxBid.maxAmount) {
           throw new BadRequestException('Someone already placed the same maximum bid before you');
         } else {
-          finalAmount = maxAmount;
+          // User thua: Current price = max của user (người thua)
+          // Competitor auto-counter bid
           shouldCreateCounterBid = true;
-          counterBidAmount = Math.min(maxAmount + product.priceStep, competitorMaxBid.maxAmount);
+          counterBidAmount = maxAmount;
           counterBidUserId = competitorMaxBid.userId;
+          finalAmount = amount;
         }
-      } else if (
-        !isAutoBid &&
-        competitorMaxBid?.maxAmount &&
-        competitorMaxBid.maxAmount >= amount
-      ) {
-        shouldCreateCounterBid = true;
-        counterBidAmount = Math.min(amount + product.priceStep, competitorMaxBid.maxAmount);
-        counterBidUserId = competitorMaxBid.userId;
+      } else if (!isAutoBid && competitorMaxBid?.maxAmount) {
+        // User bid manual, competitor có auto-bid
+        if (amount >= competitorMaxBid.maxAmount) {
+          // User bid cao hơn max của competitor → User thắng
+          finalAmount = amount;
+        } else {
+          // User bid thấp hơn max của competitor → Competitor auto-counter
+          shouldCreateCounterBid = true;
+          counterBidAmount = amount;
+          counterBidUserId = competitorMaxBid.userId;
+          finalAmount = amount;
+        }
+      } else {
+        // Không có competitor auto-bid
+        // Current price GIỮ NGUYÊN (không tăng)
+        // User chỉ đặt maxAmount, chưa cần trả tiền cao
+        finalAmount = product.currentPrice;
       }
 
       const newBid = await tx.bid.create({
@@ -255,6 +309,49 @@ export class BidsService {
         },
       });
 
+      // 7. Prepare data for outbid notification (to be sent after transaction)
+      this.logger.log(`Checking winner change: Previous=${previousWinnerId}, New=${finalWinnerId}`);
+      
+      if (previousWinnerId && previousWinnerId !== finalWinnerId) {
+        this.logger.warn(`🔔 Winner changed! Previous: ${previousWinnerId}, New: ${finalWinnerId}`);
+        
+        const previousWinner = await tx.user.findUnique({
+          where: { id: previousWinnerId },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+          },
+        });
+
+        const previousWinnerMaxBid = await tx.bid.findFirst({
+          where: {
+            productId,
+            userId: previousWinnerId,
+          },
+          orderBy: { maxAmount: 'desc' },
+          select: { maxAmount: true },
+        });
+
+        if (previousWinner && previousWinner.email) {
+          this.logger.log(`📧 Preparing outbid email for: ${previousWinner.email}`);
+          // Store in outer scope variable
+          outbidEmailData = {
+            email: previousWinner.email,
+            bidderName: previousWinner.fullName,
+            productId: product.id,
+            productName: product.name,
+            currentPrice: finalPrice,
+            yourMaxBid: previousWinnerMaxBid?.maxAmount || product.currentPrice,
+          };
+        } else {
+          this.logger.warn('⚠️ Previous winner has no email or not found');
+        }
+      } else {
+        this.logger.debug(`ℹ️ No winner change. Previous: ${previousWinnerId}, Current: ${finalWinnerId}`);
+      }
+
+      // 8. Return response
       const isWinning = finalWinnerId === userId;
 
       return {
@@ -270,11 +367,26 @@ export class BidsService {
         currentPrice: finalPrice.toString(),
         message: isWinning
           ? isAutoBid
-            ? `Auto-bidding activated! You are winning with a price of ${finalPrice.toLocaleString('en-US')} VND. The system will automatically increase your bid if someone else bids (maximum: ${maxAmount.toLocaleString('en-US')} VND)`
-            : `Bid placed successfully at ${amount.toLocaleString('en-US')} VND. You are leading!`
-          : `Your bid of ${newBid.amount.toLocaleString('en-US')} VND was outbid by automatic bidding. Current price: ${finalPrice.toLocaleString('en-US')} VND`,
+            ? `Auto-bidding activated! You are winning with a price of ${finalPrice.toLocaleString('vi-VN')} VND. The system will automatically increase your bid if someone else bids (up to: ${maxAmount.toLocaleString('vi-VN')} VND)`
+            : `Bid successful at ${amount.toLocaleString('vi-VN')} VND. You are leading!`
+          : `Your bid of ${newBid.amount.toLocaleString('vi-VN')} VND has been surpassed by an auto-bid. Current price: ${finalPrice.toLocaleString('vi-VN')} VND`,
       };
     });
+
+    // Send outbid email AFTER transaction completes successfully
+    if (outbidEmailData) {
+      this.logger.log('✉️ Sending outbid email after transaction...');
+      try {
+        await this.mailService.sendOutbidNotification(outbidEmailData);
+        this.logger.log('✅ Outbid email sent successfully');
+      } catch (error) {
+        this.logger.error('❌ Failed to send outbid notification:', error);
+      }
+    } else {
+      this.logger.debug('No outbid notification to send');
+    }
+
+    return bidResult;
   }
 
   async getBidHistory(productId: string, requestingUserId?: string) {

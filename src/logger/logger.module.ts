@@ -20,6 +20,27 @@ import { Module } from '@nestjs/common';
             }),
           ),
         }),
+        // File transport for Promtail to scrape
+        new winston.transports.File({
+          filename: 'logs/app.log',
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.json(),
+          ),
+          maxsize: 10485760, // 10MB
+          maxFiles: 5,
+        }),
+        // Separate error log file
+        new winston.transports.File({
+          filename: 'logs/error.log',
+          level: 'error',
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.json(),
+          ),
+          maxsize: 10485760, // 10MB
+          maxFiles: 5,
+        }),
         new LokiTransport({
           host: 'http://localhost:3100',
           labels: { job: 'nestjs', env: process.env.NODE_ENV || 'development' },

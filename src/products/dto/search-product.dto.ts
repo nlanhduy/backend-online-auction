@@ -69,4 +69,15 @@ export class SearchProductDto {
   @IsOptional()
   @IsEnum(Status)
   status?: Status = Status.ACTIVE;
+
+  @ApiPropertyOptional({
+    description: 'Threshold in minutes to mark products as new (e.g., 60 for products created within last hour)',
+    default: 60,
+    minimum: 1,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  newProductThresholdMinutes?: number = 60;
 }

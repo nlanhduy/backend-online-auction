@@ -498,6 +498,130 @@ export class MailService {
     }
   }
 
+  /**
+   * Send notification email when bidder is outbid
+   */
+  async sendOutbidNotification(data: {
+    email: string;
+    bidderName: string;
+    productId: string;
+    productName: string;
+    currentPrice: number;
+    yourMaxBid: number;
+  }): Promise<void> {
+    const mailFrom = this.configService.get<string>('MAIL_FROM', 'noreply@yourapp.com');
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+
+    const mailOptions = {
+      from: mailFrom,
+      to: data.email,
+      subject: `⚠️ You've Been Outbid - ${data.productName}`,
+      html: this.getOutbidNotificationTemplate(data, frontendUrl),
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(
+        `Outbid notification email sent successfully to ${data.email}. MessageId: ${info.messageId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send outbid notification email to ${data.email}`, error);
+      // Don't throw error - email notification failure shouldn't block bid process
+    }
+  }
+
+  private getOutbidNotificationTemplate(
+    data: {
+      bidderName: string;
+      productId: string;
+      productName: string;
+      currentPrice: number;
+      yourMaxBid: number;
+    },
+    frontendUrl: string,
+  ): string {
+    const productUrl = `${frontendUrl}/product/${data.productId}`;
+    const formatPrice = (price: number) => price.toLocaleString('en-US') + ' VND';
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Auction Notification</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #fff3cd; border-left: 4px solid #ff9800; padding: 30px; margin-bottom: 20px; border-radius: 8px;">
+        <h1 style="color: #e65100; margin-bottom: 20px; font-size: 24px;">
+          ⚠️ You've Been Outbid!
+        </h1>
+        
+        <p style="font-size: 16px; margin-bottom: 20px;">
+          Hello <strong>${data.bidderName}</strong>,
+        </p>
+        
+        <p style="font-size: 16px; margin-bottom: 20px;">
+          Your bid on <strong>${data.productName}</strong> has been outbid by another user.
+        </p>
+        
+        <div style="background-color: #fff; border: 2px solid #ff9800; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="color: #e65100; margin-top: 0; font-size: 18px;">Auction Details:</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
+                <strong>📱 Product:</strong>
+              </td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: right;">
+                ${data.productName}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
+                <strong>💰 Current Price:</strong>
+              </td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: right; color: #e65100; font-weight: bold;">
+                ${formatPrice(data.currentPrice)}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0;">
+                <strong>📊 Your Max Bid:</strong>
+              </td>
+              <td style="padding: 10px 0; text-align: right; color: #f44336;">
+                ${formatPrice(data.yourMaxBid)}
+              </td>
+            </tr>
+          </table>
+        </div>
+        
+        <div style="background-color: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <p style="margin: 0; font-size: 14px; color: #c62828;">
+            🔔 <strong>Place a higher bid to regain the lead!</strong>
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${productUrl}" style="display: inline-block; background-color: #ff9800; color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
+            Place Bid Now
+          </a>
+        </div>
+        
+        <p style="font-size: 14px; color: #666; margin-top: 30px;">
+          💡 <strong>Tip:</strong> You can set a higher maximum bid to let the system automatically bid on your behalf without constant monitoring.
+        </p>
+        
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
+        
+        <p style="font-size: 12px; color: #95a5a6; margin: 0;">
+          This is an automated email, please do not reply.
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+  }
+
   private getForgotPasswordTemplate(otp: string): string {
     return `
     <!DOCTYPE html>
