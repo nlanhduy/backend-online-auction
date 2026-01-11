@@ -12,26 +12,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     await this.$connect();
-    console.log('✅ Database connected');
-    
     // Setup Full-Text Search
-    await this.setupFullTextSearch();
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    console.log('❌ Database disconnected');
   }
-
 
   // Set up Full-Text Search
   private async setupFullTextSearch() {
-    try{
+    try {
       // Add search vector column
       await this.$executeRawUnsafe(`
         ALTER TABLE "Product"
         ADD COLUMN IF NOT EXISTS "searchVector" tsvector;
-      `)
+      `);
 
       // Create update function
       await this.$executeRawUnsafe(`
@@ -49,7 +44,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$executeRawUnsafe(`
         DROP TRIGGER IF EXISTS product_search_vector_trigger ON "Product";
       `);
-      
+
       await this.$executeRawUnsafe(`
         CREATE TRIGGER product_search_vector_trigger
         BEFORE INSERT OR UPDATE OF name, description ON "Product"
@@ -69,8 +64,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const result = await this.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*) as count FROM "Product" WHERE "searchVector" IS NULL;
       `;
-      const nullCount=Number(result[0]?.count||0);
-      if(nullCount>0){
+      const nullCount = Number(result[0]?.count || 0);
+      if (nullCount > 0) {
         console.log(`Updating ${nullCount} existing products to populate searchVector...`);
         await this.$executeRawUnsafe(`
           UPDATE "Product" 
@@ -81,8 +76,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         `);
         console.log('Existing products updated with searchVector');
       }
-    }
-    catch(err){
+    } catch (err) {
       console.error('Error adding searchVector column:', err);
     }
   }

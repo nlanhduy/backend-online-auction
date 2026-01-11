@@ -434,7 +434,6 @@ export class UsersService {
 
     // Verify OTP
     const verifiedUserId = await this.otpService.verifyOtp(newEmail, otp);
-    console.log({ verifiedUserId });
 
     if (!verifiedUserId) {
       throw new BadRequestException('Invalid or expired OTP');
@@ -702,7 +701,6 @@ export class UsersService {
     if (expiredSellers.length === 0) {
       return;
     }
-    console.log(`Downgrading ${expiredSellers.length} expired sellers to bidders.`);
     // Downgrade all expired sellers to BIDDER
     const downgraded = await this.prisma.$transaction(
       expiredSellers.map((seller) =>
@@ -732,7 +730,6 @@ export class UsersService {
       await this.mailService.sendSellerExpiredNotification(user.email, user.fullName);
     }
 
-    console.log(`Downgraded ${downgraded.length} users from SELLER to BIDDER.`);
     return {
       message: `Downgraded ${downgraded.length} users from SELLER to BIDDER.`,
       users: downgraded.map((u) => ({ id: u.id, email: u.email })),

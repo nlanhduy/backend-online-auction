@@ -279,14 +279,13 @@ export class OrdersService {
     }
 
     // Update order status to COMPLETED
-    // Payout sẽ được trigger bởi OrdersController sau khi update thành công
     return this.prisma.order.update({
       where: { id: orderId },
       data: {
         buyerConfirmedAt: new Date(),
         receivedAt: new Date(),
         status: OrderStatus.COMPLETED,
-        payoutStatus: PayoutStatus.PROCESSING, // Đánh dấu đang xử lý payout
+        payoutStatus: PayoutStatus.PROCESSING,
       },
     });
   }
@@ -308,7 +307,6 @@ export class OrdersService {
     }
 
     if (!order.sellerPaypalEmail) {
-      // Nếu seller chưa có PayPal email, đánh dấu failed
       await this.prisma.order.update({
         where: { id: orderId },
         data: {
@@ -319,14 +317,12 @@ export class OrdersService {
     }
 
     try {
-      // Gọi PayPal Payouts API
       const payoutResult = await paypalService.payoutToSeller(
         order.sellerPaypalEmail,
         order.sellerAmount,
         orderId,
       );
 
-      // Update order với payout info
       return await this.prisma.order.update({
         where: { id: orderId },
         data: {
@@ -337,7 +333,6 @@ export class OrdersService {
         },
       });
     } catch (error) {
-      // Nếu payout fail, đánh dấu FAILED
       await this.prisma.order.update({
         where: { id: orderId },
         data: {
