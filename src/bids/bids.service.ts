@@ -107,20 +107,20 @@ export class BidsService {
       };
     }
 
-    // Check if user can bid
     const canBid = await this.ratingsService.canUserBid(userId, product.allowNewBidders);
     const { score, total } = await this.ratingsService.getUserRatingScore(userId);
 
-    // Tính giá đề xuất (giá hiện tại + bước giá)
     const suggestedAmount = product.currentPrice + product.priceStep;
 
     let message = '';
     if (!canBid) {
       if (total === 0) {
         message =
-          'Bạn chưa có đánh giá nào. Người bán không cho phép bidder mới tham gia đấu giá sản phẩm này.';
+          'You do not have any ratings yet. The seller does not allow new bidders to participate in this auction.';
       } else {
-        message = `Điểm đánh giá của bạn là ${score.toFixed(1)}% (${total} đánh giá). Bạn cần có điểm đánh giá ≥ 80% để tham gia đấu giá.`;
+        message = `Your rating score is ${score.toFixed(
+          1,
+        )}% (${total} ratings). You need a rating score of at least 80% to participate in this auction.`;
       }
     }
 
