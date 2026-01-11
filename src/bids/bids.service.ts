@@ -57,7 +57,7 @@ export class BidsService {
         stepPrice: product.priceStep,
         userRatingScore: 0,
         userTotalRatings: 0,
-        message: 'Bạn không thể đấu giá sản phẩm của chính mình',
+        message: 'You cannot bid on your own product.',
         isSeller: true,
         isBidding: false,
       };
