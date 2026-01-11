@@ -35,7 +35,7 @@ import { UsersModule } from './user/user.module';
       {
         name: 'default',
         ttl: 60000,
-        limit: 1,
+        limit: 100,
       },
     ]),
     ConfigModule.forRoot({
