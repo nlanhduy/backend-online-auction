@@ -3,7 +3,7 @@ import {IsIn, IsNotEmpty, IsOptional, IsString, IsUUID} from 'class-validator';
 // For rate seller
 export class CreateRatingDto{
     @ApiProperty({description:'User ID to rate(seller)', example:'uuid'})
-    @IsUUID()
+    // @IsUUID()
     @IsNotEmpty()
     receiverId: string;
 
@@ -13,6 +13,6 @@ export class CreateRatingDto{
     @ApiProperty({description:'Comment about the seller', required:false})
     @IsOptional()
     @IsString()
-    comment?: string;
+    comment?: string
 
 }

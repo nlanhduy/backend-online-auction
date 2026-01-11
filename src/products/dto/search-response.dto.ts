@@ -46,6 +46,12 @@ export class ProductItemDto {
     example: { id: 'uuid', fullName: 'Jane Smith' },
   })
   seller: { id: string; fullName: string };
+
+  @ApiProperty({
+    description: 'Whether the product is new (created within configured time threshold)',
+    example: true,
+  })
+  isNew?: boolean;
 }
 export class SearchResponseDto {
   @ApiProperty({ description: 'Products found', type: [ProductItemDto] })

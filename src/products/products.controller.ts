@@ -37,6 +37,7 @@ import { UpdateDescriptionHistoryDto } from './dto/update-description-history.dt
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 import { BidsService } from 'src/bids/bids.service';
+import { ManageBidderDto, DeniedBiddersResponseDto, ActiveBiddersResponseDto } from './dto/manage-bidder.dto';
 
 @ApiTags('products')
 @Controller('products')
@@ -381,5 +382,120 @@ export class ProductsController {
     @CurrentUser() user: any,
   ): Promise<{ message: string }> {
     return await this.productsService.deleteDescriptionHistory(historyId, user.id, user.role);
+  }
+
+  // ==================== Bidder Management Routes (SELLER only) ====================
+
+  @Get(':productId/active-bidders')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get list of active bidders for product (SELLER/ADMIN)',
+    description: 'View all current bidders with their stats. Top bidder is listed first.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Active bidders list retrieved successfully',
+    type: ActiveBiddersResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed to view bidders for this product' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  async getActiveBidders(
+    @Param('productId') productId: string,
+    @CurrentUser() user: any,
+  ): Promise<ActiveBiddersResponseDto> {
+    return await this.productsService.getActiveBidders(productId, user.id, user.role);
+  }
+
+  @Post(':productId/deny-bidder')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Kick/deny a bidder from product auction (SELLER/ADMIN)',
+    description:
+      'Seller can deny specific bidder from participating in the auction. When kicked:\n' +
+      '1. All bids from this bidder are rejected\n' +
+      '2. Winner is recalculated (2nd place becomes new winner)\n' +
+      '3. New winner receives notification\n' +
+      'Denied bidder cannot place new bids.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bidder denied successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Bidder denied successfully' },
+        deniedBidders: { type: 'array', items: { type: 'string' } },
+        newWinner: { 
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: { type: 'string' },
+            fullName: { type: 'string' },
+          },
+          example: { id: 'user-2', fullName: 'Nguyen Van B' },
+        },
+        previousWinner: { type: 'string', example: 'Nguyen Van A' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed to manage bidders for this product' })
+  @ApiResponse({ status: 404, description: 'Product or bidder not found' })
+  async denyBidder(
+    @Param('productId') productId: string,
+    @Body() manageBidderDto: ManageBidderDto,
+    @CurrentUser() user: any,
+  ) {
+    return await this.productsService.denyBidder(productId, manageBidderDto.bidderId, user.id, user.role);
+  }
+
+  @Post(':productId/allow-bidder')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Remove bidder from deny list (SELLER/ADMIN)',
+    description: 'Allow a previously denied bidder to participate in auction again.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bidder allowed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Bidder allowed successfully' },
+        deniedBidders: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed to manage bidders for this product' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  async allowBidder(
+    @Param('productId') productId: string,
+    @Body() manageBidderDto: ManageBidderDto,
+    @CurrentUser() user: any,
+  ) {
+    return await this.productsService.allowBidder(productId, manageBidderDto.bidderId, user.id, user.role);
+  }
+
+  @Get(':productId/denied-bidders')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get list of denied bidders for product (SELLER/ADMIN)',
+    description: 'View all bidders that have been denied from participating in this auction.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Denied bidders list retrieved successfully',
+    type: DeniedBiddersResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed to view denied bidders for this product' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  async getDeniedBidders(
+    @Param('productId') productId: string,
+    @CurrentUser() user: any,
+  ): Promise<DeniedBiddersResponseDto> {
+    return await this.productsService.getDeniedBidders(productId, user.id, user.role);
   }
 }

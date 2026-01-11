@@ -440,61 +440,91 @@ export class OrdersService {
       ? order.Rating_Order_buyerRatingIdToRating
       : order.Rating_Order_sellerRatingIdToRating;
 
-    let rating;
+    // Use transaction to ensure all operations complete atomically
+    const result = await this.prisma.$transaction(async (tx) => {
+      let rating;
 
-    if (existingRating) {
-      // Update existing rating
-      const oldValue = existingRating.value;
+      if (existingRating) {
+        // Update existing rating
+        const oldValue = existingRating.value;
 
-      rating = await this.prisma.rating.update({
-        where: { id: existingRating.id },
-        data: {
-          value: dto.value,
-          comment: dto.comment,
-        },
-      });
-
-      // Update receiver's rating count
-      if (oldValue !== dto.value) {
-        const incrementPositive = dto.value === 1 ? 1 : oldValue === 1 ? -1 : 0;
-        const incrementNegative = dto.value === -1 ? 1 : oldValue === -1 ? -1 : 0;
-
-        await this.prisma.user.update({
-          where: { id: receiverId },
+        rating = await tx.rating.update({
+          where: { id: existingRating.id },
           data: {
-            positiveRating: { increment: incrementPositive },
-            negativeRating: { increment: incrementNegative },
+            value: dto.value,
+            comment: dto.comment,
           },
         });
+
+        // Update receiver's rating count
+        if (oldValue !== dto.value) {
+          const incrementPositive = dto.value === 1 ? 1 : oldValue === 1 ? -1 : 0;
+          const incrementNegative = dto.value === -1 ? 1 : oldValue === -1 ? -1 : 0;
+
+          await tx.user.update({
+            where: { id: receiverId },
+            data: {
+              positiveRating: { increment: incrementPositive },
+              negativeRating: { increment: incrementNegative },
+            },
+          });
+        }
+      } else {
+        // Create new rating
+        rating = await tx.rating.create({
+          data: {
+            giverId,
+            receiverId,
+            value: dto.value,
+            comment: dto.comment,
+          },
+        });
+
+        // Link rating to order
+        await tx.order.update({
+          where: { id: orderId },
+          data: isBuyer ? { buyerRatingId: rating.id } : { sellerRatingId: rating.id },
+        });
+
+        // Update receiver's rating count
+        await tx.user.update({
+          where: { id: receiverId },
+          data:
+            dto.value === 1
+              ? { positiveRating: { increment: 1 } }
+              : { negativeRating: { increment: 1 } },
+        });
       }
-    } else {
-      // Create new rating
-      rating = await this.prisma.rating.create({
-        data: {
-          giverId,
-          receiverId,
-          value: dto.value,
-          comment: dto.comment,
+
+      // Fetch and return the updated order with rating relations
+      const updatedOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          Rating_Order_buyerRatingIdToRating: true,
+          Rating_Order_sellerRatingIdToRating: true,
+          User_Order_buyerIdToUser: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              avatar: true,
+            },
+          },
+          User_Order_sellerIdToUser: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              avatar: true,
+            },
+          },
         },
       });
 
-      // Link rating to order
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: isBuyer ? { buyerRatingId: rating.id } : { sellerRatingId: rating.id },
-      });
+      return { rating, order: updatedOrder };
+    });
 
-      // Update receiver's rating count
-      await this.prisma.user.update({
-        where: { id: receiverId },
-        data:
-          dto.value === 1
-            ? { positiveRating: { increment: 1 } }
-            : { negativeRating: { increment: 1 } },
-      });
-    }
-
-    return rating;
+    return result;
   }
 
   /**

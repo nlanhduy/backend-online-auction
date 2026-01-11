@@ -697,12 +697,14 @@ export class ProductsService {
       query,
       categoryId,
       sortBy,
+      newProductThresholdMinutes = 60,
     } = searchProductDto;
 
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
     const now = new Date();
+    const thresholdMs = newProductThresholdMinutes * 60 * 1000;
 
     // Get sortBy value with default
     const sortByValue = sortBy || SortBy.END_TIME_ASC;
@@ -716,18 +718,36 @@ export class ProductsService {
 
     // Handle search based on searchType
     if (searchType === SearchType.NAME && query && query.trim() !== '') {
-      // Search by name only if query is provided
+      // Search by product name only
       where.OR = [{ name: { contains: query, mode: 'insensitive' } }];
-    } else if (searchType === SearchType.CATEGORY && categoryId && categoryId.trim() !== '') {
-      // Search by category only
-      where.categoryId = categoryId;
-    } else if (searchType === SearchType.BOTH) {
-      // Search by both name and category
-      if (query) {
-        where.OR = [{ name: { contains: query, mode: 'insensitive' } }];
-      }
-      if (categoryId && categoryId.trim() !== '') {
+    } else if (searchType === SearchType.CATEGORY) {
+      // Search by category name
+      if (query && query.trim() !== '') {
+        where.category = {
+          name: { contains: query, mode: 'insensitive' },
+        };
+      } else if (categoryId && categoryId.trim() !== '') {
         where.categoryId = categoryId;
+      }
+    } else if (searchType === SearchType.BOTH) {
+      // Search by both product name and category name
+      const conditions: any[] = [];
+      
+      if (query && query.trim() !== '') {
+        conditions.push({ name: { contains: query, mode: 'insensitive' } });
+        conditions.push({
+          category: {
+            name: { contains: query, mode: 'insensitive' },
+          },
+        });
+      }
+      
+      if (categoryId && categoryId.trim() !== '') {
+        conditions.push({ categoryId });
+      }
+      
+      if (conditions.length > 0) {
+        where.OR = conditions;
       }
     }
 
@@ -835,21 +855,27 @@ export class ProductsService {
       sortedProducts = sortedProducts.slice(skip, skip + limitNum);
     }
 
-    // Transform products
-    const transformedProducts: ProductItemDto[] = sortedProducts.map((product) => ({
-      id: product.id,
-      name: product.name,
-      mainImage: product.mainImage || null,
-      currentPrice: product.currentPrice,
-      buyNowPrice: product.buyNowPrice,
-      createdAt: product.createdAt,
-      endTime: product.endTime,
-      timeRemaining: Math.max(0, product.endTime.getTime() - now.getTime()),
-      totalBids: product._count.bids,
-      highestBidder: product.bids[0]?.user || null,
-      category: product.category,
-      seller: product.seller,
-    }));
+    // Transform products with isNew flag
+    const transformedProducts: ProductItemDto[] = sortedProducts.map((product) => {
+      const productAge = now.getTime() - product.createdAt.getTime();
+      const isNew = productAge <= thresholdMs;
+
+      return {
+        id: product.id,
+        name: product.name,
+        mainImage: product.mainImage || null,
+        currentPrice: product.currentPrice,
+        buyNowPrice: product.buyNowPrice,
+        createdAt: product.createdAt,
+        endTime: product.endTime,
+        timeRemaining: Math.max(0, product.endTime.getTime() - now.getTime()),
+        totalBids: product._count.bids,
+        highestBidder: product.bids[0]?.user || null,
+        category: product.category,
+        seller: product.seller,
+        isNew,
+      };
+    });
 
     const totalPages = Math.ceil(total / limitNum);
     return {
@@ -875,6 +901,7 @@ export class ProductsService {
       query,
       categoryId,
       sortBy,
+      newProductThresholdMinutes = 60,
     } = searchProductDto;
 
     const pageNum = Number(page) || 1;
@@ -887,35 +914,49 @@ export class ProductsService {
       // If no query, fall back to traditional search
       return this.traditionalSearch(searchProductDto);
     }
-    // Convert query to tsquery format
+    // Convert query to tsquery format with unaccent for Vietnamese support
     const tsquery = query.trim().split(/\s+/).join(' & ');
     console.log('📊 FTS Query:', { query, tsquery, now: now.toISOString() });
 
     // Build WHERE conditions
-    const conditions: string[] = [`p.status = 'ACTIVE'`, `p."endTime" > $1`];
+    const baseConditions: string[] = [`p.status = 'ACTIVE'`, `p."endTime" > $1`];
+    const searchConditions: string[] = [];
 
     const params: any[] = [now];
     let paramIndex = 2;
 
-    // Add FTS condition
-    if (searchType === SearchType.NAME || searchType === SearchType.BOTH) {
-      conditions.push(`p."searchVector" @@ to_tsquery('english', $${paramIndex})`);
-      params.push(tsquery);
+    // Add search condition based on search type
+    if (searchType === SearchType.NAME) {
+      // Search only in product name
+      searchConditions.push(`p.name ILIKE $${paramIndex}`);
+      params.push(`%${query}%`);
       paramIndex++;
+    } else if (searchType === SearchType.CATEGORY) {
+      // Search only in category name
+      searchConditions.push(`c.name ILIKE $${paramIndex}`);
+      params.push(`%${query}%`);
+      paramIndex++;
+    } else if (searchType === SearchType.BOTH) {
+      // Search in both product name OR category name
+      searchConditions.push(`(p.name ILIKE $${paramIndex} OR c.name ILIKE $${paramIndex + 1})`);
+      params.push(`%${query}%`, `%${query}%`);
+      paramIndex += 2;
     }
 
-    // Add category filter
-    if (
-      (searchType === SearchType.CATEGORY || searchType === SearchType.BOTH) &&
-      categoryId &&
-      categoryId.trim() !== ''
-    ) {
-      conditions.push(`p."categoryId" = $${paramIndex}`);
+    // Add exact category filter if provided
+    if (categoryId && categoryId.trim() !== '') {
+      baseConditions.push(`p."categoryId" = $${paramIndex}`);
       params.push(categoryId);
       paramIndex++;
     }
 
-    const whereClause = conditions.join(' AND ');
+    // Combine conditions
+    const allConditions = [...baseConditions];
+    if (searchConditions.length > 0) {
+      allConditions.push(...searchConditions);
+    }
+    
+    const whereClause = allConditions.join(' AND ');
 
     // Build ORDER BY
     let orderByClause: string;
@@ -934,7 +975,7 @@ export class ProductsService {
       };
       orderByClause =
         orderByMap[sortByString] ||
-        `ts_rank(p."searchVector", to_tsquery('english', $2)) DESC, p."endTime" ASC`;
+        `ts_rank(p."searchVector", to_tsquery('simple', $2)) DESC, p."endTime" ASC`;
     }
 
     // Main query
@@ -949,9 +990,9 @@ export class ProductsService {
         p."endTime",
         p."categoryId",
         p."sellerId",
-        ts_rank(p."searchVector", to_tsquery('english', $2)) as rank,
         COUNT(b.id) FILTER (WHERE b.rejected = false) as bid_count
       FROM "Product" p
+      LEFT JOIN "Category" c ON c.id = p."categoryId"
       LEFT JOIN "Bid" b ON b."productId" = p.id
       WHERE ${whereClause}
       GROUP BY p.id
@@ -972,6 +1013,7 @@ export class ProductsService {
     const countSql = `
       SELECT COUNT(DISTINCT p.id) as total
       FROM "Product" p
+      LEFT JOIN "Category" c ON c.id = p."categoryId"
       WHERE ${whereClause}
     `;
 
@@ -982,8 +1024,8 @@ export class ProductsService {
 
     const totalCount = Number(total);
 
-    // Enrich with relations
-    const enrichedProducts = await this.enrichProducts(products);
+    // Enrich with relations and add isNew flag
+    const enrichedProducts = await this.enrichProducts(products, newProductThresholdMinutes);
 
     const totalPages = Math.ceil(totalCount / limitNum);
     return {
@@ -1021,8 +1063,12 @@ export class ProductsService {
   }
 
   // Enrich products with relations
-  private async enrichProducts(products: any[]): Promise<ProductItemDto[]> {
+  private async enrichProducts(
+    products: any[],
+    newProductThresholdMinutes: number = 60,
+  ): Promise<ProductItemDto[]> {
     const now = new Date();
+    const thresholdMs = newProductThresholdMinutes * 60 * 1000;
 
     const enriched = await Promise.all(
       products.map(async (product) => {
@@ -1057,6 +1103,11 @@ export class ProductsService {
         if (!fullProduct) {
           return null;
         }
+
+        // Calculate if product is new (created within threshold)
+        const productAge = now.getTime() - fullProduct.createdAt.getTime();
+        const isNew = productAge <= thresholdMs;
+
         const productItem: ProductItemDto = {
           id: fullProduct.id,
           name: fullProduct.name,
@@ -1070,6 +1121,7 @@ export class ProductsService {
           highestBidder: fullProduct.bids[0]?.user || null,
           category: fullProduct.category,
           seller: fullProduct.seller,
+          isNew,
         };
 
         return productItem;
@@ -1463,5 +1515,298 @@ export class ProductsService {
     }
 
     return relatedProducts;
+  }
+
+  // ==================== Bidder Management Methods ====================
+
+  /**
+   * Deny/kick a bidder from participating in the auction
+   * Only product seller or admin can deny bidders
+   */
+  async denyBidder(productId: string, bidderId: string, userId: string, userRole: string) {
+    // Get product
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { sellerId: true, deniedBidders: true, status: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Check permission (only seller or admin)
+    if (userRole !== 'ADMIN' && product.sellerId !== userId) {
+      throw new ForbiddenException('You are not allowed to manage bidders for this product');
+    }
+
+    // Check if product is still active
+    if (product.status !== 'ACTIVE') {
+      throw new BadRequestException('Cannot manage bidders for non-active products');
+    }
+
+    // Check if bidder exists
+    const bidder = await this.prisma.user.findUnique({
+      where: { id: bidderId },
+      select: { id: true, fullName: true },
+    });
+
+    if (!bidder) {
+      throw new NotFoundException(`Bidder with id ${bidderId} not found`);
+    }
+
+    // Check if bidder is the seller
+    if (bidderId === product.sellerId) {
+      throw new BadRequestException('Cannot deny the seller from their own product');
+    }
+
+    // Check if already denied
+    if (product.deniedBidders.includes(bidderId)) {
+      throw new BadRequestException('This bidder is already denied');
+    }
+
+    // Transaction: Add to denied list, reject all bids, recalculate winner
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Add to denied list
+      await tx.product.update({
+        where: { id: productId },
+        data: {
+          deniedBidders: {
+            push: bidderId,
+          },
+        },
+      });
+
+      // 2. Reject all bids from this bidder
+      await tx.bid.updateMany({
+        where: {
+          productId,
+          userId: bidderId,
+          rejected: false,
+        },
+        data: {
+          rejected: true,
+        },
+      });
+
+      // 3. Find new top bidder (highest non-rejected bid)
+      const newTopBid = await tx.bid.findFirst({
+        where: {
+          productId,
+          rejected: false,
+        },
+        orderBy: [
+          { amount: 'desc' },
+          { createdAt: 'asc' },
+        ],
+        include: {
+          user: {
+            select: { id: true, fullName: true },
+          },
+        },
+      });
+
+      // 4. Update product winner and current price
+      const updatedProduct = await tx.product.update({
+        where: { id: productId },
+        data: {
+          winnerId: newTopBid?.userId || null,
+          currentPrice: newTopBid?.amount || product.status === 'ACTIVE' ? await this.getInitialPrice(productId) : 0,
+        },
+        select: {
+          id: true,
+          name: true,
+          deniedBidders: true,
+          winnerId: true,
+          currentPrice: true,
+        },
+      });
+
+      return {
+        updatedProduct,
+        newTopBidder: newTopBid?.user || null,
+        previousWinnerId: bidderId,
+      };
+    });
+
+    return {
+      message: 'Bidder denied successfully',
+      deniedBidders: result.updatedProduct.deniedBidders,
+      newWinner: result.newTopBidder,
+      previousWinner: bidder.fullName,
+    };
+  }
+
+  /**
+   * Remove a bidder from deny list (allow them to bid again)
+   */
+  async allowBidder(productId: string, bidderId: string, userId: string, userRole: string) {
+    // Get product
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { sellerId: true, deniedBidders: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Check permission
+    if (userRole !== 'ADMIN' && product.sellerId !== userId) {
+      throw new ForbiddenException('You are not allowed to manage bidders for this product');
+    }
+
+    // Check if bidder is in deny list
+    if (!product.deniedBidders.includes(bidderId)) {
+      throw new BadRequestException('This bidder is not in the deny list');
+    }
+
+    // Remove from denied list
+    const updatedProduct = await this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        deniedBidders: product.deniedBidders.filter((id) => id !== bidderId),
+      },
+      select: { deniedBidders: true },
+    });
+
+    return {
+      message: 'Bidder allowed successfully',
+      deniedBidders: updatedProduct.deniedBidders,
+    };
+  }
+
+  /**
+   * Get initial price helper
+   */
+  private async getInitialPrice(productId: string): Promise<number> {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { initialPrice: true },
+    });
+    return product?.initialPrice || 0;
+  }
+
+  /**
+   * Get list of active bidders for a product
+   */
+  async getActiveBidders(productId: string, userId: string, userRole: string) {
+    // Get product
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { sellerId: true, winnerId: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Check permission (only seller or admin)
+    if (userRole !== 'ADMIN' && product.sellerId !== userId) {
+      throw new ForbiddenException('You are not allowed to view bidders for this product');
+    }
+
+    // Get all active bids grouped by user
+    const bids = await this.prisma.bid.findMany({
+      where: {
+        productId,
+        rejected: false,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+      orderBy: [
+        { amount: 'desc' },
+        { createdAt: 'asc' },
+      ],
+    });
+
+    // Group by user and get stats
+    const bidderMap = new Map<string, {
+      id: string;
+      fullName: string;
+      highestBid: number;
+      totalBids: number;
+      lastBidTime: Date;
+    }>();
+
+    bids.forEach((bid) => {
+      const existing = bidderMap.get(bid.userId);
+      if (!existing) {
+        bidderMap.set(bid.userId, {
+          id: bid.user.id,
+          fullName: bid.user.fullName,
+          highestBid: bid.amount,
+          totalBids: 1,
+          lastBidTime: bid.createdAt,
+        });
+      } else {
+        existing.totalBids++;
+        if (bid.createdAt > existing.lastBidTime) {
+          existing.lastBidTime = bid.createdAt;
+        }
+      }
+    });
+
+    // Convert to array and sort by highest bid
+    const bidders = Array.from(bidderMap.values())
+      .map((bidder) => ({
+        ...bidder,
+        isWinning: bidder.id === product.winnerId,
+      }))
+      .sort((a, b) => b.highestBid - a.highestBid);
+
+    return {
+      bidders,
+      currentWinnerId: product.winnerId,
+    };
+  }
+
+  /**
+   * Get list of denied bidders with their details
+   */
+  async getDeniedBidders(productId: string, userId: string, userRole: string) {
+    // Get product
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { sellerId: true, deniedBidders: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with id ${productId} not found`);
+    }
+
+    // Check permission
+    if (userRole !== 'ADMIN' && product.sellerId !== userId) {
+      throw new ForbiddenException('You are not allowed to view denied bidders for this product');
+    }
+
+    // Get bidder details
+    if (product.deniedBidders.length === 0) {
+      return {
+        deniedBidders: [],
+        bidders: [],
+      };
+    }
+
+    const bidders = await this.prisma.user.findMany({
+      where: {
+        id: { in: product.deniedBidders },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+      },
+    });
+
+    return {
+      deniedBidders: product.deniedBidders,
+      bidders,
+    };
   }
 }
