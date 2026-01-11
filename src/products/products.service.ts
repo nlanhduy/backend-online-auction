@@ -699,7 +699,7 @@ export class ProductsService {
     } else if (searchType === SearchType.BOTH) {
       // Search by both product name and category name
       const conditions: any[] = [];
-
+      
       if (query && query.trim() !== '') {
         conditions.push({ name: { contains: query, mode: 'insensitive' } });
         conditions.push({
@@ -921,7 +921,6 @@ export class ProductsService {
     if (searchConditions.length > 0) {
       allConditions.push(...searchConditions);
     }
-
     const whereClause = allConditions.join(' AND ');
 
     // Build ORDER BY
