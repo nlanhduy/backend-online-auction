@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { retry, take } from 'rxjs';
+import { MailService } from 'src/mail/mail.service';
 import { GetUserProductDto } from 'src/user/dto/get-user-product.dto';
 
 import {
@@ -30,6 +31,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private systemSettingsService: SystemSettingsService,
+    private mailService: MailService,
   ) {}
   async create(createProductDto: CreateProductDto, sellerId: string) {
     const settings = await this.systemSettingsService.getSettings();
@@ -318,13 +320,7 @@ export class ProductsService {
       }
     }
 
-    // Kiểm tra xem description có thay đổi không
-    const isDescriptionChanged =
-      updateProductDto.description && updateProductDto.description !== existingProduct.description;
-
-    // Sử dụng transaction để update product và tạo history
     return this.prisma.$transaction(async (tx) => {
-      // 1. Update product
       const updatedProduct = await tx.product.update({
         where: { id },
         data: {
@@ -339,16 +335,24 @@ export class ProductsService {
         },
       });
 
-      // 2. Nếu description thay đổi, tạo history entry mới
-      if (isDescriptionChanged) {
-        await tx.descriptionHistory.create({
-          data: {
-            description: updateProductDto.description!,
-            productId: id,
-            createdBy: userId,
-          },
-        });
-      }
+      await tx.descriptionHistory.create({
+        data: {
+          description: updateProductDto.description!,
+          productId: id,
+          createdBy: userId,
+        },
+      });
+      // Find all users bidding on the product and send them an email
+      const biddersId = await tx.bid.findMany({
+        where: { productId: id },
+        select: { userId: true },
+      });
+
+      const bidders = await tx.user.findMany({
+        where: { id: { in: biddersId.map((bid) => bid.userId) } },
+      });
+
+      await this.mailService.sendProductUpdateEmail(updatedProduct, bidders);
 
       return updatedProduct;
     });

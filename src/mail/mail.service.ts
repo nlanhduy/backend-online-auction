@@ -6,6 +6,7 @@ import * as nodemailer from 'nodemailer';
 // src/mail/mail.service.ts
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Product, User } from '@prisma/client';
 
 @Injectable()
 export class MailService {
@@ -607,5 +608,143 @@ export class MailService {
   </body>
   </html>
   `;
+  }
+  async sendProductUpdateEmail(product: Product, bidders: User[]): Promise<void> {
+    const mailFrom = this.configService.get<string>('MAIL_FROM', 'noreply@yourapp.com');
+    const frontendBaseUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const productLink = `${frontendBaseUrl}/product/${product.id}`;
+
+    const subject = `Product Updated: ${product.name}`;
+
+    // Send email to each bidder
+    const emailPromises = bidders.map(async (bidder) => {
+      const mailOptions = {
+        from: mailFrom,
+        to: bidder.email,
+        subject,
+        html: this.getProductUpdateTemplate(
+          {
+            bidderName: bidder.fullName,
+            productName: product.name,
+            productPrice: product.currentPrice,
+          },
+          productLink,
+        ),
+      };
+
+      try {
+        const info = await this.transporter.sendMail(mailOptions);
+        this.logger.log(
+          `Product update email sent to ${bidder.email}. MessageId: ${info.messageId}`,
+        );
+      } catch (error) {
+        this.logger.error(`Failed to send product update email to ${bidder.email}`, error);
+      }
+    });
+
+    await Promise.allSettled(emailPromises);
+  }
+
+  private getProductUpdateTemplate(
+    data: {
+      bidderName: string;
+      productName: string;
+      productPrice?: number;
+    },
+    productLink: string,
+  ): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background-color: #FF9800; color: white; padding: 20px; text-align: center; }
+    .content { background-color: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+    .update-box {
+      background-color: #fff;
+      border-left: 4px solid #FF9800;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .info-row { 
+      margin: 10px 0; 
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .info-label { 
+      font-weight: bold; 
+      color: #555;
+      display: inline-block;
+      width: 120px;
+    }
+    .info-value { color: #333; }
+    .button-container { text-align: center; margin: 30px 0; }
+    .view-button {
+      display: inline-block;
+      padding: 15px 40px;
+      background-color: #FF9800;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .view-button:hover { opacity: 0.9; }
+    .highlight { 
+      background-color: #FFF3E0; 
+      padding: 2px 6px; 
+      border-radius: 3px;
+      font-weight: bold;
+    }
+    .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔔 Product Updated</h1>
+    </div>
+
+    <div class="content">
+      <p>Hello ${data.bidderName},</p>
+
+      <p>
+        The seller has updated information for <strong>${data.productName}</strong>, 
+        a product you've shown interest in by placing a bid.
+      </p>
+
+      ${
+        data.productPrice
+          ? `
+      <div class="info-row">
+        <span class="info-label">Current Price:</span>
+        <span class="info-value highlight">${data.productPrice}</span>
+      </div>
+      `
+          : ''
+      }
+
+      <div class="button-container">
+        <a href="${productLink}" class="view-button">
+          View Updated Product →
+        </a>
+      </div>
+
+      <p style="color: #666; font-size: 14px; margin-top: 30px;">
+        You are receiving this email because you have placed a bid on this product. 
+        Check out the latest updates to stay informed!
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>This is an automated notification. Please do not reply to this email.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
   }
 }
